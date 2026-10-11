@@ -108,6 +108,7 @@ fn to_json(d: &Decision) -> Value {
             "images": d.images,
         },
         "attempts": d.attempts,
+        "fallback_crossed_classes": d.crossed_classes(),
         "status": d.status,
         "outcome": d.outcome,
         "message": d.message,

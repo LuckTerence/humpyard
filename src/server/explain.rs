@@ -96,6 +96,20 @@ impl Hypothetical {
     }
 }
 
+/// The distinct classes of `targets`, in the order they first appear. Targets without a class
+/// are left out: the report says only what is known.
+fn distinct_classes(snap: &Snapshot, targets: &[ModelId]) -> Vec<String> {
+    let mut distinct: Vec<String> = Vec::new();
+    for name in targets {
+        if let Some(class) = snap.config.target_classes.get(name.as_str())
+            && !distinct.contains(class)
+        {
+            distinct.push(class.clone());
+        }
+    }
+    distinct
+}
+
 /// How each target has behaved for the caller over the last day, when a ledger exists.
 async fn recent_by_target(
     state: &AppState,
@@ -218,6 +232,9 @@ fn explain(
                 .map(|name| target_report(snap, name, recent))
                 .collect();
             report["targets"] = Value::Array(targets);
+            let classes = distinct_classes(snap, plan.models.models_for(&Category::Any));
+            report["fallback_can_cross_classes"] = json!(classes.len() > 1);
+            report["classes"] = json!(classes);
         }
         Some(Err(error)) => {
             report["outcome"] = json!(error.outcome());
@@ -257,7 +274,12 @@ fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, Group
             "p50_ms": g.p50_ms,
         })
     });
-    json!({"target": name.to_string(), "endpoints": endpoints, "recent": recent})
+    json!({
+        "target": name.to_string(),
+        "class": snap.config.target_classes.get(name.as_str()),
+        "endpoints": endpoints,
+        "recent": recent,
+    })
 }
 
 fn budget_name(state: BudgetState) -> &'static str {

@@ -7,7 +7,7 @@
 
 ## 2. Pool classes and opt-in strict fallback
 
-- [ ] 2.1 Make cross-class fallback visible first: flag it on decisions and in `explain` (no behavior change)
+- [x] 2.1 Make cross-class fallback visible first: flag it on decisions and in `explain` (no behavior change)
 - [ ] 2.2 Class labels on targets, an allowed-class list per route, refusal when no allowed target remains; tests (strict refuses, lenient falls back, default unchanged); ADR
 
 ## 3. Session stickiness (investigate first)

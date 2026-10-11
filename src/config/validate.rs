@@ -70,6 +70,7 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
     validate_budgets(raw)?;
     validate_health(raw)?;
     validate_selectors(raw)?;
+    validate_classes(raw)?;
     for (id, target) in &raw.targets {
         if target.endpoints.is_empty() {
             return Err(invalid(format!("target `{id}` has no endpoints")));
@@ -109,6 +110,23 @@ pub const CREDENTIAL_HEADERS: [&str; 5] = [
     "set-cookie",
     "proxy-authorization",
 ];
+
+pub(super) fn validate_classes(raw: &RawConfig) -> Result<(), ConfigError> {
+    for (id, target) in &raw.targets {
+        if let Some(class) = &target.class
+            && (class.is_empty()
+                || class.len() > 32
+                || !class
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_'))
+        {
+            return Err(invalid(format!(
+                "target `{id}`: class `{class}` must be 1 to 32 lowercase letters, digits, - or _ (for example private, public, paid)"
+            )));
+        }
+    }
+    Ok(())
+}
 
 pub(super) fn validate_selectors(raw: &RawConfig) -> Result<(), ConfigError> {
     let mut names = std::collections::BTreeSet::new();

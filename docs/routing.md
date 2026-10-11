@@ -199,6 +199,32 @@ often each rule fires and what each pool costs and how long it takes: tune the t
 
 Responses carry `x-humpyard-target` (who served) and `x-humpyard-provider` (which endpoint).
 
+## Target classes
+
+A target can carry a **class** label, conventionally `private` (your own hardware), `public` (free
+or shared providers) or `paid`, or one of your own (lowercase letters, digits, `-` and `_`):
+
+```toml
+[targets.local-model]
+class = "private"
+endpoints = [{ provider = "local", model = "local-coder" }]
+```
+
+Classes **change nothing about routing**. They make a quiet failure visible: a `private` route that
+lists a public target after it will, when the private target fails, serve the request from the public
+one, and until now nothing said so. With labels:
+
+- `GET /v1/decisions` adds `fallback_crossed_classes` to each decision (`true` when the attempts
+  spanned more than one class, `false` when they did not, `null` when a target has no class), and each
+  attempt shows its `class`.
+- `POST /v1/route/explain` shows each target's `class`, the route's `classes` in order, and
+  `fallback_can_cross_classes`, so you can see before sending anything that a route may leave its
+  first class.
+
+`GET /v1/decisions?outcome=ok` plus a look at `fallback_crossed_classes` answers "how often did my
+private traffic end up somewhere public?". Whether to forbid crossing outright is a later,
+opt-in step (see `add-auto-routing`); today the labels only report.
+
 ## Changing the configuration while running
 
 Routes, selector rules, targets, providers, keys and budgets can be edited and reloaded without a
