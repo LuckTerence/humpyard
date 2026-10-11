@@ -42,6 +42,7 @@ keep the old `x-conductor-*` header names as history; living specs and code use 
   A new page under `docs/` must be added to the `nav` in `mkdocs.yml`.
 
 ## Releases
+- A release PR bumps `Cargo.toml` and the version in `docs/deployment.md` **and the image tag in the README quick start** (`latest` is not published before 1.0).
 - Releases are tag-only (`vX.Y.Z` matching `Cargo.toml`, commit on `main`; ADR 0010,
   [docs/deployment.md](docs/deployment.md)). Pushing a tag publishes binaries and an image publicly,
   so never create or push a release tag unless the user explicitly asks for that release.
