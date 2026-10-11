@@ -34,6 +34,8 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Using it:
+      - Configuration: configuration.md
+      - API and endpoints: api.md
       - Deployment: deployment.md
       - Clients: clients.md
       - Routing: routing.md
