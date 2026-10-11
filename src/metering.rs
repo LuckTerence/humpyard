@@ -21,7 +21,7 @@ use crate::clock::Clock;
 use crate::config::{FallbackOn, Price};
 use crate::error::{fallback_class, stop_fallback};
 use crate::estimate::tokens_for_bytes;
-use crate::ledger::{Entry, Kind, Ledger};
+use crate::ledger::{Attempt, Entry, Kind, Ledger};
 use crate::pool::{Served, TargetClient};
 use crate::pricing::cost_micro_usd;
 
@@ -79,6 +79,9 @@ impl Accounting {
 
 /// The identity and routing facts every call of one request shares.
 pub struct CallContext {
+    request_id: String,
+    /// Every upstream attempt of this request, in order (decision log).
+    attempts: Mutex<Vec<Attempt>>,
     accounting: Arc<Accounting>,
     key_id: Option<String>,
     session_id: Option<String>,
@@ -104,12 +107,15 @@ fn usage_is_empty(usage: &Usage) -> bool {
 
 impl CallContext {
     pub fn new(
+        request_id: String,
         accounting: Arc<Accounting>,
         key_id: Option<String>,
         session_id: Option<String>,
         route: String,
     ) -> Arc<Self> {
         Arc::new(Self {
+            request_id,
+            attempts: Mutex::new(Vec::new()),
             accounting,
             key_id,
             session_id,
@@ -118,6 +124,11 @@ impl CallContext {
             buffered: Mutex::new(Vec::new()),
             streams: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// The attempts made so far, oldest first.
+    pub fn attempts(&self) -> Vec<Attempt> {
+        self.attempts.lock().clone()
     }
 
     fn base_entry(&self, target: &str, served: &Served) -> Entry {
@@ -138,6 +149,7 @@ impl CallContext {
             cost_micro_usd: 0,
             outcome: "ok".into(),
             usage_missing: true,
+            request_id: Some(self.request_id.clone()),
         }
     }
 
@@ -351,12 +363,22 @@ struct Metered {
 #[async_trait]
 impl RoutedLlmClient for Metered {
     async fn call(&self, request: Request) -> Result<Response, LlmClientError> {
-        let (mut response, served) = self.inner.call_detailed(request).await.map_err(|error| {
-            match fallback_class(&error) {
+        let (mut response, served) = self
+            .inner
+            .call_detailed(request, &mut |a| {
+                self.ctx.attempts.lock().push(Attempt {
+                    target: self.target.clone(),
+                    provider: a.provider,
+                    model: a.model,
+                    outcome: a.outcome,
+                    ms: a.ms,
+                });
+            })
+            .await
+            .map_err(|error| match fallback_class(&error) {
                 Some(class) if !self.fallback.allows(class) => stop_fallback(class, &error),
                 _ => error,
-            }
-        })?;
+            })?;
         let id = self.ctx.next_id.fetch_add(1, Ordering::Relaxed);
         let mut entry = self.ctx.base_entry(&self.target, &served);
         match &response.llm_response {

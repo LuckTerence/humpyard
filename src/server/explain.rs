@@ -153,7 +153,7 @@ fn explain(
             return json!({
                 "key": caller.map(|k| &k.id),
                 "requested_model": request.model,
-                "outcome": outcome_name(&error),
+                "outcome": error.outcome(),
                 "message": error.to_string(),
                 "rules": rules,
             });
@@ -169,7 +169,7 @@ fn explain(
     let budget = match check_budget(state, caller) {
         Ok(budget) => budget,
         Err(error) => {
-            report["outcome"] = json!(outcome_name(&error));
+            report["outcome"] = json!(error.outcome());
             report["message"] = json!(error.to_string());
             return report;
         }
@@ -192,7 +192,7 @@ fn explain(
             report["targets"] = Value::Array(targets);
         }
         Some(Err(error)) => {
-            report["outcome"] = json!(outcome_name(&error));
+            report["outcome"] = json!(error.outcome());
             report["message"] = json!(error.to_string());
         }
         None => {
@@ -229,16 +229,5 @@ fn budget_name(state: BudgetState) -> &'static str {
         BudgetState::Healthy => "healthy",
         BudgetState::Restricted => "restricted",
         BudgetState::Exhausted => "exhausted",
-    }
-}
-
-/// A stable machine-readable name for why a request would not be served.
-fn outcome_name(error: &GatewayError) -> &'static str {
-    match error {
-        GatewayError::Forbidden(_) => "forbidden",
-        GatewayError::ModelNotFound(_) => "unknown_model",
-        GatewayError::BudgetExceeded(_) => "budget_exhausted",
-        GatewayError::Unavailable(_) => "no_eligible_target",
-        _ => "error",
     }
 }

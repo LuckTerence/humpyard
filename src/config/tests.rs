@@ -400,3 +400,22 @@ fn health_values_are_validated_by_key_and_ignored_when_disabled() {
     assert!(Config::from_toml(&disabled, env).is_ok());
     assert!(err(&format!("{VALID}\n[health]\nbogus = 1\n")).contains("bogus"));
 }
+
+#[test]
+fn decision_retention_defaults_to_ninety_days_and_is_validated() {
+    assert_eq!(
+        Config::from_toml(VALID, env)
+            .unwrap()
+            .decision_retention_days,
+        90
+    );
+    let forever = format!("decision_retention_days = 0\n{VALID}");
+    assert_eq!(
+        Config::from_toml(&forever, env)
+            .unwrap()
+            .decision_retention_days,
+        0
+    );
+    let too_long = format!("decision_retention_days = 3651\n{VALID}");
+    assert!(err(&too_long).contains("decision_retention_days"));
+}

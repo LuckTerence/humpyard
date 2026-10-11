@@ -1,5 +1,6 @@
 listen = "127.0.0.1:8080"
 # shutdown_grace_secs = 30   # how long to let in-flight requests finish after SIGTERM/Ctrl-C (0-3600)
+# decision_retention_days = 90 # keep routing decisions this long in the ledger database (0 = forever)
 # reload_poll_secs = 15       # also re-read this file every 15 s and reload if it changed (0 = off;
 #                             # SIGHUP always reloads). Use under Kubernetes, where nothing can signal.
 

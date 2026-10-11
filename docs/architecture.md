@@ -3,7 +3,7 @@
 Living document. Update it in the same PR as any change that alters structure, request flow or
 component status (see [AGENTS.md](../AGENTS.md)). Diagrams are Mermaid and render on GitHub.
 
-Last updated: 2026-10-08 (`add-hot-reload`: configuration reloads without a restart; next: the private LiteLLM-parity configuration and openclaw trial, then the router decision log).
+Last updated: 2026-10-10 (`add-decision-log`: every routing decision is recorded and queryable; next: auto-routing on top of selectors, then an admin API).
 
 ## Component status
 
@@ -19,7 +19,7 @@ Last updated: 2026-10-08 (`add-hot-reload`: configuration reloads without a rest
 | Virtual keys (hashed, `KeyStore` trait), usage ledger (SQLite, async), per-endpoint pricing | Implemented | `add-cost-tracking` |
 | Budgets: UTC daily/monthly USD+token limits, restricted/exhausted states, 402, free-only, `/v1/key/info` | Implemented | `add-cost-tracking` |
 | Hot reload: atomic config snapshot swapped on SIGHUP or by polling the file; bad files rejected; health and unchanged routes carried over | Implemented | `add-hot-reload` (ADR 0012) |
-| Router decision log: a request id plus a `decisions` table (requested model, rule, attempts and fallbacks, refusals, request features) with a read API; today only successful calls reach the ledger and the rest is in logs and response headers | Planned (next after hot reload) | not yet proposed |
+| Router decision log: request id, per-request `decisions` table (rule, skipped rules, attempts and fallbacks, refusals, request features), `GET /v1/decisions` per key, retention | Implemented | `add-decision-log` (ADR 0013) |
 | Content conditions for selectors: estimated prompt size, tools, images | Implemented | `add-request-feature-conditions` |
 | Route explain: `POST /v1/route/explain` dry run (selected rule, why others did not apply, targets, health, outcome) | Implemented | `add-route-explain` |
 | Route selectors: ordered rules choose the route from the key, headers, tags and agent metadata; clients narrow, never widen | Implemented | `add-route-selectors` (ADR 0011) |
@@ -114,6 +114,7 @@ Switchyard decides the macro question (which target); the provider pool answers 
 | `policy.rs` | `RoutingPolicy` trait, `PolicyContext`, allow-all default |
 | `auth.rs` | `KeyStore` trait, config-backed store, key hashing, `keygen` support |
 | `budget.rs` | Live per-key counters (UTC day/month), budget states, `BudgetPolicy` |
+| `ledger/decisions.rs` | Routing decision rows (one per request), attempts, per-key queries, retention pruning |
 | `ledger.rs` | SQLite usage ledger with async batching writer and period queries |
 | `metering.rs` | Per-request metered clients, stream tap, answer/judge classification, `Accounting` |
 | `pricing.rs` / `clock.rs` | micro-USD cost from usage; clock and UTC periods |

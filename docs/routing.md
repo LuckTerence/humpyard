@@ -109,6 +109,9 @@ policy with each endpoint's health, the route's `fallback_on`, and an `outcome`:
 `unknown_model`, `budget_exhausted` or `no_eligible_target`. It runs the same code as real
 requests, so the two agree; it only answers for the calling key.
 
+Every request also gets an `x-humpyard-request-id`; the [decision log](budgets.md#the-decision-log)
+keeps what was decided (rule, skipped rules, attempts, outcome) so it can be reviewed later.
+
 Responses carry `x-humpyard-route` (the route that served) and `x-humpyard-rule` (the rule's name,
 `select[<index>]` when unnamed, or `default` when the requested model named the route); the log
 line has both and the ledger's route column records the route. Selection happens before the budget

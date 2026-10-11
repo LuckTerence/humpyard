@@ -37,7 +37,7 @@ use crate::config::Config;
 use crate::config::OverBudget;
 use crate::error::GatewayError;
 use crate::estimate::estimate_tokens;
-use crate::ledger::Ledger;
+use crate::ledger::{Decision, Ledger};
 use crate::metering::{Accounting, CALL_ID_HEADER, CallContext, StreamTemplate};
 use crate::num::f64_from_u64;
 use crate::policy::{
@@ -50,10 +50,13 @@ use crate::select::{Facts, Features, Selectors};
 const TARGET_HEADER: &str = "x-humpyard-target";
 const TOKEN_COUNT_HEADER: &str = "x-humpyard-token-count";
 /// Response headers naming the route that served a request and the selector rule that chose it.
+mod decisions;
 mod explain;
 
 const ROUTE_HEADER: &str = "x-humpyard-route";
 const RULE_HEADER: &str = "x-humpyard-rule";
+/// Response header carrying the request's id, which also marks its usage rows and its decision.
+const REQUEST_ID_HEADER: &str = "x-humpyard-request-id";
 
 /// Everything derived from the config file. It is replaced whole on a reload (ADR 0012): a request
 /// takes the current snapshot once and uses it to the end, so rules never change under it.
@@ -345,6 +348,9 @@ fn restart_only_changes(old: &Config, new: &Config) -> Result<(), String> {
     if old.reload_poll_secs != new.reload_poll_secs {
         return refuse("reload_poll_secs");
     }
+    if old.decision_retention_days != new.decision_retention_days {
+        return refuse("decision_retention_days");
+    }
     if old.keys.is_empty() != new.keys.is_empty() {
         return refuse(
             "having keys at all (the budget tracker is only created for keyed gateways)",
@@ -400,7 +406,15 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
     let clock: Arc<dyn Clock> = options.clock.unwrap_or_else(|| Arc::new(SystemClock));
     let extra_policy: Arc<dyn RoutingPolicy> = options.policy.unwrap_or_else(|| Arc::new(AllowAll));
     let ledger = match &config.ledger {
-        Some(path) => Some(Ledger::open(path).await.map_err(|e| e.to_string())?),
+        Some(path) => Some(
+            Ledger::open_with(
+                path,
+                crate::ledger::DEFAULT_CAPACITY,
+                config.decision_retention_days,
+            )
+            .await
+            .map_err(|e| e.to_string())?,
+        ),
         None => None,
     };
     let tracker = (!config.keys.is_empty())
@@ -427,6 +441,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/key/info", get(key_info))
         .route("/v1/health", get(endpoint_health))
         .route("/v1/route/explain", post(explain::explain_route))
+        .route("/v1/decisions", get(decisions::list_decisions))
         .route(
             "/v1/messages/count_tokens",
             post(|s, h, b| count_tokens(s, WireFormat::AnthropicMessages, h, b)),
@@ -654,22 +669,32 @@ async fn infer(
 ) -> Response {
     let snap = state.snapshot();
     let started = std::time::Instant::now();
+    let mut guard = DecisionGuard::new(&state, format);
+    let request_id = guard.decision.request_id.clone();
     let caller = match authenticate(&snap, &headers).await {
         Ok(caller) => caller,
         Err(error) => {
-            tracing::warn!(%format, status = error.status().as_u16(), error = %error, "request rejected");
-            return error.into_response_for(format);
+            tracing::warn!(%format, status = error.status().as_u16(), error = %error, request_id, "request rejected");
+            return guard.refuse(error, format);
         }
     };
     let key_id = caller.as_ref().map_or("-", |k| k.id.as_str()).to_string();
+    guard.decision.key_id = caller.as_ref().map(|k| k.id.clone());
+    guard.decision.session_id = request_info(&headers).session_id;
     let outcome = tokio::select! {
-        outcome = handle(&state, &snap, format, &headers, &body, caller.as_ref()) => outcome,
+        outcome = handle(&state, &snap, format, &headers, &body, caller.as_ref(), &mut guard) => outcome,
         () = stopped(state.hard_stop.clone()) => {
             Err(GatewayError::Unavailable("gateway is shutting down".into()))
         }
     };
     match outcome {
         Ok((target, response)) => {
+            let provider = response
+                .headers()
+                .get(PROVIDER_HEADER)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_string();
             tracing::info!(
                 %format,
                 key = key_id,
@@ -684,21 +709,121 @@ async fn infer(
                     .get(RULE_HEADER)
                     .and_then(|v| v.to_str().ok())
                     .unwrap_or(""),
-                provider = response
-                    .headers()
-                    .get(PROVIDER_HEADER)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or(""),
+                provider,
                 status = response.status().as_u16(),
                 elapsed_ms = started.elapsed().as_millis(),
+                request_id,
                 "request"
             );
-            response
+            guard.succeed(response, &target, &provider)
         }
         Err(error) => {
-            tracing::warn!(%format, key = key_id, status = error.status().as_u16(), error = %error, "request failed");
-            error.into_response_for(format)
+            tracing::warn!(%format, key = key_id, status = error.status().as_u16(), error = %error, request_id, "request failed");
+            guard.refuse(error, format)
         }
+    }
+}
+
+/// Owns a request's decision for its whole life and records it however the request ends: served,
+/// refused, failed, or abandoned (a client that disconnects drops the handler, and `Drop` records
+/// the decision as `cancelled`). See ADR 0013.
+struct DecisionGuard {
+    accounting: Arc<Accounting>,
+    decision: Decision,
+    /// The request's upstream calls, once routing has reached them.
+    ctx: Option<Arc<CallContext>>,
+    started: std::time::Instant,
+    recorded: bool,
+    /// Kept apart from `decision` because recording moves the decision out.
+    decision_id: String,
+}
+
+impl DecisionGuard {
+    fn new(state: &AppState, format: WireFormat) -> Self {
+        let now_ms = state.clock.now_ms();
+        let request_id = new_request_id(now_ms);
+        Self {
+            accounting: state.accounting.clone(),
+            decision_id: request_id.clone(),
+            decision: Decision {
+                request_id,
+                ts_ms: now_ms,
+                format: format.to_string(),
+                ..Decision::default()
+            },
+            ctx: None,
+            started: std::time::Instant::now(),
+            recorded: false,
+        }
+    }
+
+    /// Records the decision with its final facts. Does nothing if already recorded.
+    fn record(&mut self, status: u16, outcome: &str, message: Option<String>) {
+        if std::mem::replace(&mut self.recorded, true) {
+            return;
+        }
+        if let Some(ctx) = &self.ctx {
+            self.decision.attempts = ctx.attempts();
+        }
+        self.decision.status = status;
+        self.decision.outcome = outcome.to_string();
+        self.decision.message = message;
+        self.decision.latency_ms =
+            u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        if let Some(ledger) = self.accounting.ledger() {
+            ledger.record_decision(std::mem::take(&mut self.decision));
+        }
+    }
+
+    /// The request was served: stamps the id on the response and records the decision.
+    fn succeed(mut self, mut response: Response, target: &str, provider: &str) -> Response {
+        self.decision.served_target = Some(target.to_string());
+        self.decision.served_provider = Some(provider.to_string());
+        self.record(response.status().as_u16(), "ok", None);
+        set_header(&mut response, REQUEST_ID_HEADER, &self.request_id());
+        response
+    }
+
+    /// The request ended in an error: records it, and renders the error with the id.
+    fn refuse(mut self, error: GatewayError, format: WireFormat) -> Response {
+        self.record(
+            error.status().as_u16(),
+            error.outcome(),
+            Some(error.to_string()),
+        );
+        let id = self.request_id();
+        let mut response = error.into_response_for(format);
+        set_header(&mut response, REQUEST_ID_HEADER, &id);
+        response
+    }
+
+    fn request_id(&self) -> String {
+        self.decision_id.clone()
+    }
+}
+
+impl Drop for DecisionGuard {
+    fn drop(&mut self) {
+        // Reaching here unrecorded means the handler was dropped mid-request (client gone).
+        self.record(499, "cancelled", None);
+    }
+}
+
+/// 16 hex characters of randomness; the clock stands in if randomness is unavailable, because a
+/// request must never fail for want of an id.
+fn new_request_id(now_ms: i64) -> String {
+    let mut bytes = [0_u8; 8];
+    if getrandom::fill(&mut bytes).is_err() {
+        bytes = now_ms.to_be_bytes();
+    }
+    hex::encode(bytes)
+}
+
+fn budget_label(state: BudgetState) -> &'static str {
+    match state {
+        BudgetState::Healthy => "healthy",
+        BudgetState::Restricted => "restricted",
+        BudgetState::Exhausted => "exhausted",
     }
 }
 
@@ -734,6 +859,7 @@ async fn handle(
     headers: &HeaderMap,
     raw: &[u8],
     caller: Option<&KeyRecord>,
+    guard: &mut DecisionGuard,
 ) -> Result<(String, Response), GatewayError> {
     let Decoded {
         body,
@@ -742,16 +868,34 @@ async fn handle(
     } = decode(format, raw)?;
     let info = request_info(headers);
     let stream = body["stream"].as_bool().unwrap_or(false);
+    let features = request_features(&llm_request, &snap.selectors);
+    guard.decision.requested_model.clone_from(&model);
+    guard.decision.stream = stream;
+    guard.decision.prompt_tokens = features.prompt_tokens;
+    guard.decision.tools = features.tools;
+    guard.decision.images = features.images;
     let selection = select_route(
         snap,
         caller,
         &model,
         stream,
-        request_features(&llm_request, &snap.selectors),
+        features,
         &selector_headers(headers),
         &info,
     )?;
+    guard.decision.route = Some(selection.name.clone());
+    guard.decision.rule = Some(selection.rule.clone());
+    guard.decision.source = Some(
+        if selection.rule == "default" {
+            "requested_model"
+        } else {
+            "selector"
+        }
+        .to_string(),
+    );
+    guard.decision.skipped_rules.clone_from(&selection.skipped);
     let budget = check_budget(state, caller)?;
+    guard.decision.budget = budget.map(|b| budget_label(b).to_string());
     let plan = plan_route(
         snap,
         selection.route,
@@ -760,6 +904,12 @@ async fn handle(
         budget,
         &info,
     )?;
+    guard.decision.eligible_targets = plan
+        .models
+        .models_for(&Category::Any)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     let extensions = llm_request.extensions.clone();
     let request = Request {
         llm_request,
@@ -767,11 +917,13 @@ async fn handle(
         metadata: Some(info.metadata),
     };
     let ctx = CallContext::new(
+        guard.decision.request_id.clone(),
         state.accounting.clone(),
         caller.map(|k| k.id.clone()),
         info.session_id,
         selection.name.clone(),
     );
+    guard.ctx = Some(ctx.clone());
     let executed = execute(snap, &ctx, plan, request).await?;
     let (target, mut response) = encode(format, state.hard_stop.clone(), executed, &extensions)?;
     set_header(&mut response, ROUTE_HEADER, &selection.name);
@@ -859,6 +1011,8 @@ struct Selection<'a> {
     name: String,
     /// The selector rule that chose it, or `default` when the requested model named the route.
     rule: String,
+    /// Rules that matched but were skipped because the key may not use their route.
+    skipped: Vec<String>,
 }
 
 /// Request headers rules may match: names lower-cased, credential headers left out.
@@ -884,6 +1038,7 @@ fn select_route<'a>(
     header_facts: &HashMap<String, String>,
     info: &RequestInfo,
 ) -> Result<Selection<'a>, GatewayError> {
+    let mut skipped_rules = Vec::new();
     if !snap.selectors.is_empty() {
         let facts = Facts {
             model,
@@ -895,9 +1050,10 @@ fn select_route<'a>(
             stream,
             features,
         };
-        let chosen = snap
+        let (chosen, skipped) = snap
             .selectors
-            .choose(&facts, |route| caller.is_none_or(|key| key.may_use(route)));
+            .choose_detailed(&facts, |route| caller.is_none_or(|key| key.may_use(route)));
+        skipped_rules = skipped.into_iter().map(String::from).collect();
         if let Some(chosen) = chosen
             && let Some(route) = snap.routes.get(chosen.route)
         {
@@ -905,6 +1061,7 @@ fn select_route<'a>(
                 route,
                 name: chosen.route.to_string(),
                 rule: chosen.rule.to_string(),
+                skipped: skipped_rules,
             });
         }
     }
@@ -913,6 +1070,7 @@ fn select_route<'a>(
         route,
         name: model.to_string(),
         rule: "default".to_string(),
+        skipped: skipped_rules,
     })
 }
 

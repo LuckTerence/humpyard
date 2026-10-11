@@ -53,6 +53,11 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
     if raw.reload_poll_secs > 3600 {
         return Err(invalid("reload_poll_secs must be between 0 and 3600"));
     }
+    if raw.decision_retention_days > 3650 {
+        return Err(invalid(
+            "decision_retention_days must be between 0 and 3650",
+        ));
+    }
     if raw.providers.is_empty() {
         return Err(invalid("at least one provider is required"));
     }

@@ -17,6 +17,9 @@ pub(super) struct RawConfig {
     /// Re-read the config file this often and reload when its content changed (0 = off).
     #[serde(default)]
     pub(super) reload_poll_secs: u64,
+    /// Days to keep routing decisions in the ledger database (0 = forever).
+    #[serde(default = "default_decision_retention_days")]
+    pub(super) decision_retention_days: u64,
     pub(super) providers: BTreeMap<String, RawProvider>,
     pub(super) targets: BTreeMap<String, RawTarget>,
     #[serde(default)]
@@ -138,6 +141,10 @@ pub(super) struct RawProvider {
 #[serde(deny_unknown_fields)]
 pub(super) struct RawTarget {
     pub(super) endpoints: Vec<Endpoint>,
+}
+
+fn default_decision_retention_days() -> u64 {
+    90
 }
 
 fn default_shutdown_grace_secs() -> u64 {

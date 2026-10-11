@@ -1,6 +1,8 @@
 //! Usage ledger: one row per upstream call, written by a single background task so the request
 //! path never waits on the database.
 
+mod decisions;
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;
@@ -16,9 +18,15 @@ use sqlx::sqlite::{
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-const SCHEMA_VERSION: i64 = 1;
+pub use decisions::{Attempt, Decision, DecisionQuery};
+
+const SCHEMA_VERSION: i64 = 2;
+/// How often the writer deletes decisions past their retention.
+const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+/// Decision retention when none is given, in days.
+pub const DEFAULT_DECISION_RETENTION_DAYS: u64 = 90;
 const BATCH: usize = 100;
-const DEFAULT_CAPACITY: usize = 10_000;
+pub const DEFAULT_CAPACITY: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -58,6 +66,8 @@ pub struct Entry {
     pub outcome: String,
     /// The provider reported no usage, so the token counts and cost are zero by default.
     pub usage_missing: bool,
+    /// The request this call belongs to (joins to `decisions`); `None` on rows from before v2.
+    pub request_id: Option<String>,
 }
 
 impl Entry {
@@ -93,6 +103,7 @@ pub enum LedgerError {
 /// What the writer task receives: entries, and markers that ask it to catch up.
 enum Message {
     Entry(Box<Entry>),
+    Decision(Box<Decision>),
     /// Written once everything received before it has been stored.
     Flush(oneshot::Sender<()>),
 }
@@ -113,6 +124,16 @@ impl Ledger {
     }
 
     pub async fn open_with_capacity(path: &Path, capacity: usize) -> Result<Self, LedgerError> {
+        Self::open_with(path, capacity, DEFAULT_DECISION_RETENTION_DAYS).await
+    }
+
+    /// Opens the ledger, upgrading an older database in place. Decisions older than
+    /// `retention_days` are deleted (0 keeps them forever).
+    pub async fn open_with(
+        path: &Path,
+        capacity: usize,
+        retention_days: u64,
+    ) -> Result<Self, LedgerError> {
         let open_error = |source| LedgerError::Open {
             path: path.display().to_string(),
             source,
@@ -135,19 +156,29 @@ impl Ledger {
         let writer_failed = failed.clone();
         let writer = tokio::spawn(async move {
             let mut messages = Vec::with_capacity(BATCH);
+            let mut last_prune: Option<std::time::Instant> = None;
             while rx.recv_many(&mut messages, BATCH).await > 0 {
                 let mut entries = Vec::with_capacity(messages.len());
+                let mut decided = Vec::new();
                 for message in messages.drain(..) {
                     match message {
                         Message::Entry(entry) => entries.push(*entry),
+                        Message::Decision(decision) => decided.push(*decision),
                         Message::Flush(done) => {
                             write(&writer_pool, &writer_failed, &entries).await;
+                            write_decisions(&writer_pool, &writer_failed, &decided).await;
                             entries.clear();
+                            decided.clear();
                             let _ = done.send(());
                         }
                     }
                 }
                 write(&writer_pool, &writer_failed, &entries).await;
+                write_decisions(&writer_pool, &writer_failed, &decided).await;
+                if retention_days > 0 && last_prune.is_none_or(|t| t.elapsed() >= PRUNE_EVERY) {
+                    last_prune = Some(std::time::Instant::now());
+                    prune_decisions(&writer_pool, retention_days).await;
+                }
             }
         });
         Ok(Self {
@@ -165,6 +196,23 @@ impl Ledger {
             self.dropped.fetch_add(1, Ordering::Relaxed);
             tracing::error!("ledger queue full or closed; entry dropped");
         }
+    }
+
+    /// Queues a routing decision. Never waits, like [`Ledger::record`].
+    pub fn record_decision(&self, decision: Decision) {
+        if self
+            .tx
+            .try_send(Message::Decision(Box::new(decision)))
+            .is_err()
+        {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            tracing::error!("ledger queue full or closed; decision dropped");
+        }
+    }
+
+    /// Decisions matching `query`, newest first.
+    pub async fn decisions(&self, query: &DecisionQuery) -> Result<Vec<Decision>, LedgerError> {
+        decisions::query(&self.pool, query).await
     }
 
     pub fn dropped(&self) -> u64 {
@@ -228,6 +276,7 @@ impl Ledger {
                 cost_micro_usd: from_i64(row.get::<i64, _>("cost_micro_usd")),
                 outcome: row.get("outcome"),
                 usage_missing: row.get("usage_missing"),
+                request_id: row.get("request_id"),
             })
             .collect())
     }
@@ -273,6 +322,34 @@ async fn write(pool: &SqlitePool, failed: &AtomicU64, entries: &[Entry]) {
     }
 }
 
+/// Writes a batch of decisions; like `write`, failures are counted and logged only.
+async fn write_decisions(pool: &SqlitePool, failed: &AtomicU64, batch: &[Decision]) {
+    if batch.is_empty() {
+        return;
+    }
+    if let Err(error) = decisions::insert_batch(pool, batch).await {
+        failed.fetch_add(
+            u64::try_from(batch.len()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+        tracing::error!(%error, decisions = batch.len(), "ledger write failed; decisions lost");
+    }
+}
+
+async fn prune_decisions(pool: &SqlitePool, retention_days: u64) {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
+        .unwrap_or(0);
+    let window_ms = i64::try_from(retention_days.saturating_mul(86_400_000)).unwrap_or(i64::MAX);
+    match decisions::prune(pool, now_ms.saturating_sub(window_ms)).await {
+        Ok(0) => {}
+        Ok(removed) => tracing::info!(removed, "pruned decisions past their retention"),
+        Err(error) => tracing::warn!(%error, "could not prune decisions"),
+    }
+}
+
 async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let version: i64 = sqlx::query_scalar("PRAGMA user_version")
         .fetch_one(pool)
@@ -303,6 +380,24 @@ async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         sqlx::query("CREATE INDEX IF NOT EXISTS usage_key_ts ON usage (key_id, ts_ms)")
             .execute(pool)
             .await?;
+    }
+    if version < 2 {
+        // v2 (ADR 0013): routing decisions, and the request id that joins them to usage rows.
+        // A fresh v1-style table above has no `request_id`; add it unless a re-run finds it.
+        let has_request_id: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM pragma_table_info('usage') WHERE name = 'request_id'",
+        )
+        .fetch_one(pool)
+        .await?;
+        if has_request_id == 0 {
+            sqlx::query("ALTER TABLE usage ADD COLUMN request_id TEXT")
+                .execute(pool)
+                .await?;
+        }
+        sqlx::query("CREATE INDEX IF NOT EXISTS usage_request ON usage (request_id)")
+            .execute(pool)
+            .await?;
+        decisions::migrate_v2(pool).await?;
         // PRAGMA does not take bound parameters; the value is a compile-time constant.
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "PRAGMA user_version = {SCHEMA_VERSION}"
@@ -319,8 +414,8 @@ async fn insert_batch(pool: &SqlitePool, batch: &[Entry]) -> Result<(), sqlx::Er
         sqlx::query(
             "INSERT INTO usage (ts_ms, key_id, session_id, route, target, provider, model, kind, \
              input_tokens, cached_input_tokens, cache_creation_tokens, output_tokens, reasoning_tokens, \
-             cost_micro_usd, outcome, usage_missing) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
+             cost_micro_usd, outcome, usage_missing, request_id) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
         )
         .bind(e.ts_ms)
         .bind(&e.key_id)
@@ -338,6 +433,7 @@ async fn insert_batch(pool: &SqlitePool, batch: &[Entry]) -> Result<(), sqlx::Er
         .bind(to_i64(e.cost_micro_usd))
         .bind(&e.outcome)
         .bind(e.usage_missing)
+        .bind(&e.request_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -366,6 +462,7 @@ mod tests {
             cost_micro_usd: cost,
             outcome: "ok".into(),
             usage_missing: false,
+            request_id: None,
         }
     }
 

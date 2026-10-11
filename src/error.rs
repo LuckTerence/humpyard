@@ -50,6 +50,23 @@ impl GatewayError {
         }
     }
 
+    /// A stable machine-readable name for what happened to a request, used by the decision log
+    /// and `explain`.
+    pub fn outcome(&self) -> &'static str {
+        match self {
+            Self::BadRequest(_) => "bad_request",
+            Self::ModelNotFound(_) => "unknown_model",
+            Self::Upstream { .. } => "upstream_client_error",
+            Self::UpstreamUnreachable(_) => "upstream_error",
+            Self::UpstreamTimeout => "timeout",
+            Self::Unauthorized(_) => "unauthorized",
+            Self::Forbidden(_) => "forbidden",
+            Self::BudgetExceeded(_) => "budget_exhausted",
+            Self::Unavailable(_) => "no_eligible_target",
+            Self::Internal(_) => "internal_error",
+        }
+    }
+
     fn kind(&self) -> &'static str {
         match self.status().as_u16() {
             400 => "invalid_request_error",

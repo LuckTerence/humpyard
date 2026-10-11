@@ -40,6 +40,8 @@ pub struct Config {
     /// How often to check the config file for changes and reload; 0 turns polling off (SIGHUP
     /// still works). Needs a restart to change.
     pub reload_poll_secs: u64,
+    /// Days to keep routing decisions (0 = forever). Needs a restart to change.
+    pub decision_retention_days: u64,
     pub providers: BTreeMap<String, Provider>,
     pub targets: BTreeMap<String, Vec<Endpoint>>,
     pub routes: BTreeMap<String, RouteSpec>,
@@ -161,6 +163,7 @@ impl Config {
             listen: raw.listen,
             shutdown_grace_secs: raw.shutdown_grace_secs,
             reload_poll_secs: raw.reload_poll_secs,
+            decision_retention_days: raw.decision_retention_days,
             providers,
             targets: raw
                 .targets
