@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds the MkDocs input tree in build/docs from docs/, the examples and a landing page.
+"""Builds the MkDocs input tree in build/docs from docs/ (including its index.md landing page) and the examples.
 
 Links in the Markdown that leave docs/ (tests, examples, OpenSpec, AGENTS.md ...) cannot resolve
 on the site, so they are rewritten to the matching GitHub URL. Run from the repository root.
@@ -38,7 +38,6 @@ def main() -> None:
         dest = OUT / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(rewrite(path.read_text(), rel))
-    shutil.copy("site/index.md", OUT / "index.md")
     (OUT / "CNAME").write_text("humpyard.dev\n")  # the custom domain, kept with the site
     # The example configs as pages, so they are readable and searchable on the site.
     examples = OUT / "examples.md"

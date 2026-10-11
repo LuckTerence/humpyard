@@ -36,7 +36,7 @@ keep the old `x-conductor-*` header names as history; living specs and code use 
   fails a PR with an unsigned commit. Fix with `git rebase --signoff origin/main`.
 
 ## Documentation site
-- https://humpyard.dev is built from `docs/` (MkDocs Material): `site/prepare.py` assembles the input
+- https://humpyard.dev is built from `docs/` (MkDocs Material): `site/prepare.py` assembles the input (the landing page is `docs/index.md`)
   (links that leave `docs/` become GitHub links), `mkdocs.yml` holds the nav, and
   `.github/workflows/docs-site.yml` builds on PRs (strict: broken links fail) and deploys on `main`.
   A new page under `docs/` must be added to the `nav` in `mkdocs.yml`.
