@@ -1,0 +1,62 @@
+site_name: humpyard
+site_description: A gateway that sorts each LLM request onto the right model
+site_url: https://humpyard.dev/
+repo_url: https://github.com/gschaetz/humpyard
+repo_name: gschaetz/humpyard
+docs_dir: build/docs
+strict: false
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle: {icon: material/weather-night, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle: {icon: material/weather-sunny, name: Switch to light mode}
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight
+nav:
+  - Home: index.md
+  - Using it:
+      - Deployment: deployment.md
+      - Clients: clients.md
+      - Routing: routing.md
+      - Keys, budgets and the ledger: budgets.md
+      - Providers: providers.md
+      - Migrating from LiteLLM: migrating-from-litellm.md
+      - Example configs: examples.md
+  - Design:
+      - Architecture: architecture.md
+      - Invariants: invariants.md
+      - Background: background.md
+      - Decision records:
+          - Index: adr/README.md
+          - "0001 Embed Switchyard in process": adr/0001-embed-switchyard-in-process.md
+          - "0002 Dispatch on Switchyard's client": adr/0002-dispatch-on-switchyards-client.md
+          - "0003 Config-first keys": adr/0003-config-first-virtual-keys-behind-keystore.md
+          - "0004 No plaintext secrets": adr/0004-no-plaintext-secrets.md
+          - "0005 SQLite ledger": adr/0005-sqlite-ledger-with-async-writer.md
+          - "0006 Money as integer micro-USD": adr/0006-money-as-integer-micro-usd.md
+          - "0007 One-shot modelrelay migration": adr/0007-one-shot-modelrelay-migration.md
+          - "0008 Routing policy seam": adr/0008-routing-policy-seam.md
+          - "0009 Endpoint health": adr/0009-endpoint-health-lives-in-the-pool.md
+          - "0010 Tag-only releases": adr/0010-tag-only-native-releases.md
+          - "0011 Selectors": adr/0011-selectors-choose-the-route.md
+          - "0012 Config reload": adr/0012-config-snapshot-reloaded-on-sighup.md
+          - "0013 Decision log": adr/0013-decisions-recorded-per-request.md
