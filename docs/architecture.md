@@ -3,7 +3,7 @@
 Living document. Update it in the same PR as any change that alters structure, request flow or
 component status (see [AGENTS.md](../AGENTS.md)). Diagrams are Mermaid and render on GitHub.
 
-Last updated: 2026-10-10 (`add-decision-log`: every routing decision is recorded and queryable; next: auto-routing on top of selectors, then an admin API).
+Last updated: 2026-10-10 (`add-routing-statistics`: read-only performance statistics over the decision log; next: auto-routing on top of selectors, cost-aware choice informed by these numbers, then an admin API).
 
 ## Component status
 
@@ -21,6 +21,7 @@ Last updated: 2026-10-10 (`add-decision-log`: every routing decision is recorded
 | Hot reload: atomic config snapshot swapped on SIGHUP or by polling the file; bad files rejected; health and unchanged routes carried over | Implemented | `add-hot-reload` (ADR 0012) |
 | Router decision log: request id, per-request `decisions` table (rule, skipped rules, attempts and fallbacks, refusals, request features), `GET /v1/decisions` per key, retention | Implemented | `add-decision-log` (ADR 0013) |
 | Content conditions for selectors: estimated prompt size, tools, images | Implemented | `add-request-feature-conditions` |
+| Routing statistics: `GET /v1/stats` (failure mix, fallback rate, latency percentiles, cost per request by route/target/endpoint, per key) and per-target `recent` numbers in explain; read-only | Implemented | `add-routing-statistics` |
 | Route explain: `POST /v1/route/explain` dry run (selected rule, why others did not apply, targets, health, outcome) | Implemented | `add-route-explain` |
 | Route selectors: ordered rules choose the route from the key, headers, tags and agent metadata; clients narrow, never widen | Implemented | `add-route-selectors` (ADR 0011) |
 | Endpoint health: per-endpoint circuit breaker with cooldown and probe, fail-open, `GET /v1/health` | Implemented | `add-endpoint-health` (ADR 0009) |
@@ -114,6 +115,7 @@ Switchyard decides the macro question (which target); the provider pool answers 
 | `policy.rs` | `RoutingPolicy` trait, `PolicyContext`, allow-all default |
 | `auth.rs` | `KeyStore` trait, config-backed store, key hashing, `keygen` support |
 | `budget.rs` | Live per-key counters (UTC day/month), budget states, `BudgetPolicy` |
+| `ledger/stats.rs` | Read-only aggregation over decisions and usage: group stats, outcome mix, nearest-rank percentiles |
 | `ledger/decisions.rs` | Routing decision rows (one per request), attempts, per-key queries, retention pruning |
 | `ledger.rs` | SQLite usage ledger with async batching writer and period queries |
 | `metering.rs` | Per-request metered clients, stream tap, answer/judge classification, `Accounting` |

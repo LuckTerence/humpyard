@@ -109,6 +109,9 @@ policy with each endpoint's health, the route's `fallback_on`, and an `outcome`:
 `unknown_model`, `budget_exhausted` or `no_eligible_target`. It runs the same code as real
 requests, so the two agree; it only answers for the calling key.
 
+Targets in the report carry `recent` (24-hour attempts, failure rate and median latency, from
+[`/v1/stats`](budgets.md#statistics)) so you can see how a route has really been behaving.
+
 Every request also gets an `x-humpyard-request-id`; the [decision log](budgets.md#the-decision-log)
 keeps what was decided (rule, skipped rules, attempts, outcome) so it can be reviewed later.
 
