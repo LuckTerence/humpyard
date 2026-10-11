@@ -19,6 +19,9 @@ database-managed keys with an admin API, `/metrics`, and a status page (see
 [the roadmap](docs/architecture.md#component-status)). Design background in
 [docs/background.md](docs/background.md).
 
+Documentation site: https://humpyard.dev (built from `docs/` by `.github/workflows/docs-site.yml`; run
+`python3 site/prepare.py && mkdocs build` with `site/requirements.txt` to preview it).
+
 Run it: release binaries, a container image and a macOS launchd service are described in
 [docs/deployment.md](docs/deployment.md).
 

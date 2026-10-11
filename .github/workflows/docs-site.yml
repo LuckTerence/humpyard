@@ -1,0 +1,44 @@
+# Builds the documentation site (MkDocs Material, from docs/) on every pull request that touches
+# it, and publishes it to GitHub Pages (https://humpyard.dev) when the change lands on main.
+name: docs-site
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", "site/**", "mkdocs.yml", "examples/**", ".github/workflows/docs-site.yml"]
+  pull_request:
+    paths: ["docs/**", "site/**", "mkdocs.yml", "examples/**", ".github/workflows/docs-site.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r site/requirements.txt
+      - run: python3 site/prepare.py
+      # Strict: a broken internal link or a page missing from the nav fails the build.
+      - run: mkdocs build --strict -d site-out
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-out
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
