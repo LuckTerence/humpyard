@@ -1,45 +1,83 @@
 site_name: humpyard
-site_description: A gateway that sorts each LLM request onto the right model
-site_url: https://humpyard.dev/
-repo_url: https://github.com/gschaetz/humpyard
+site_description: A content-aware routing and policy gateway for agent LLM traffic.
+site_url: https://humpyard.dev
 repo_name: gschaetz/humpyard
+repo_url: https://github.com/gschaetz/humpyard
+edit_uri: edit/main/docs/
+# site/prepare.py assembles the input here (links that leave docs/ become GitHub links, and the
+# example configs become a page). CI builds with --strict.
 docs_dir: build/docs
-strict: false
+
 theme:
   name: material
+
   palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: indigo
-      toggle: {icon: material/weather-night, name: Switch to dark mode}
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: indigo
-      toggle: {icon: material/weather-sunny, name: Switch to light mode}
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
   features:
-    - navigation.sections
-    - navigation.top
-    - search.suggest
-    - content.code.copy
+    - navigation.tabs          # horizontal top tabs for the main categories
+    - navigation.tabs.sticky   # keep the tab row visible while scrolling
+    - navigation.sections      # group pages inside the sidebar
+    - navigation.top           # floating back-to-top button
+    - navigation.tracking      # URL follows the section being read
+    - navigation.instant       # no-refresh page loads
+    - search.suggest           # inline search completions
+    - search.highlight         # highlight the searched words on the page
+    - content.code.copy        # copy button on code blocks
+    - content.code.annotate    # numbered callouts inside code blocks
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  icon:
+    repo: fontawesome/brands/github
+
 markdown_extensions:
   - admonition
-  - tables
-  - toc: {permalink: true}
+  - tables                     # the docs use tables heavily
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
   - pymdownx.superfences:
       custom_fences:
-        - name: mermaid
+        - name: mermaid        # the architecture page has mermaid diagrams
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
-  - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
 nav:
   - Home: index.md
   - Using it:
-      - Configuration: configuration.md
-      - API and endpoints: api.md
       - Deployment: deployment.md
+      - Configuration: configuration.md
       - Clients: clients.md
       - Routing: routing.md
       - Keys, budgets and the ledger: budgets.md
+      - API and endpoints: api.md
       - Providers: providers.md
       - Migrating from LiteLLM: migrating-from-litellm.md
       - Example configs: examples.md
