@@ -16,6 +16,20 @@ When a rule delegates the choice to a classifier model, the gateway SHALL apply 
 - **WHEN** the classifier model errors or times out
 - **THEN** the request is served by the fallback pool and the decision records that the fallback was used
 
+### Requirement: Strict routes never fall through to a disallowed class
+When a route restricts the pool classes it may fall through to, the gateway SHALL NOT try a target of any other class after a failure, and SHALL refuse the request when no allowed target remains.
+
+#### Scenario: Strict private route
+- **WHEN** a route allows only the `private` class and its private target fails
+- **THEN** the request is refused (no public target is called) and the decision records the refusal
+
+### Requirement: Cross-class fallback is visible
+When a request is served by a target of a different class than the route's first choice, the decision log and `explain` SHALL flag it.
+
+#### Scenario: Silent fallback made visible
+- **WHEN** a private route falls back to a public target
+- **THEN** the decision marks the fallback as crossing classes
+
 ### Requirement: Choices are explainable
 `explain` SHALL show which rule (or classifier verdict) would choose the pool for a described request.
 

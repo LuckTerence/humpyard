@@ -23,6 +23,17 @@ metadata, prompt size, tools and images, first match wins, and clients can narro
   (failure mix, latency percentiles, cost per request) read-only. Cost-aware ordering inside the
   set a rule allows, with exploration and operator overrides, comes after that and needs its own
   proposal; rules for access and privacy stay hard constraints a cost model cannot override.
+- **Strictness is opt-in, per route.** Some deployments want a private route to degrade to a public
+  one when the private model is down; a global fail-closed rule would break them. The class labels
+  and the allowed-class list make the policy explicit either way, and the flag on decisions makes
+  today's silent behavior observable first.
+- **Stickiness depends on the client.** Switchyard reads session ids from Claude Code, Codex and
+  `x-switchyard-session-id`. A client that sends none gets no stickiness, and a static provider
+  header cannot carry a per-conversation id, so the investigation measures coverage per client
+  before promising it.
+- **`classify` has a measurable trigger.** Build it only if the decision log shows a high share of
+  requests landing on the catch-all, or the default pool's cost per request is above a threshold
+  agreed in advance; otherwise it stays deferred.
 - **Measure before building step 2.** The decision log is the prerequisite for tuning: without it
   there is no record of what the rules did over real traffic.
 

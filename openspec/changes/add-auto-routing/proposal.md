@@ -23,12 +23,23 @@ see and tune those choices from real traffic.
 - **Optional classifier-backed routing.** A route type or rule action `classify` that asks a cheap
   judge model which pool a request needs (reusing the existing `llm_classifier` machinery), with a
   timeout and a deterministic fallback pool, so classification can never block or fail a request.
+- **Pool classes with opt-in strict fallback.** Targets (or pools) carry a class (`private`,
+  `public`, `paid`) and a route says which classes it may fall through to. Today a private route
+  that fails falls to public *by design* in some deployments; that stays the default. A strict
+  route is refused instead, and decisions and `explain` flag any fallback that crossed a class,
+  so a silent private-to-public fallback becomes visible even where it is allowed.
+- **Stickiness, investigated.** Clients such as Claude Code and Codex send a session id that
+  Switchyard already reads; reusing it to keep a conversation on one pool may be cheap. Clients
+  that send none (some harnesses) cannot benefit without sending a header, so the investigation
+  must not assume it helps every client.
 - **Visibility to tune it.** Depends on the router decision log (see the roadmap): which rule or
   classifier verdict chose the pool, with enough context to compare outcomes. Until then the
   `x-humpyard-rule` header and `explain` are the tools.
 
-Out of scope: learning routing from outcomes automatically, per-conversation stickiness (picks are
-per request today; a later change), changes to what clients send.
+Out of scope: learning routing from outcomes automatically, and changes to what clients send. Cost-aware
+ordering inside the allowed set is a separate later proposal (advisory first, with exploration), which
+needs endpoint prices and weeks of statistics; access and privacy rules stay hard constraints it can
+never override.
 
 ## Capabilities
 

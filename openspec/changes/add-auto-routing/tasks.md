@@ -1,15 +1,26 @@
 # Tasks
 
-## 1. The auto pattern (configuration and docs)
+## 1. The auto pattern (configuration and docs; no code)
 
 - [ ] 1.1 Example rule set and `docs/routing.md` recipe: one `auto` route, intent rules (private tag, sub-agent, long prompt, tools), safe catch-all; verify each rule with `explain` tests
 - [ ] 1.2 Document client-side intent hints (static provider headers, one provider entry per intent) in docs/clients.md
 
-## 2. Classifier-backed rule action (only if rules prove too coarse)
+## 2. Pool classes and opt-in strict fallback
 
-- [ ] 2.1 Proposal and ADR for a `classify` action with timeout and fallback pool
-- [ ] 2.2 Implementation, tests (slow, failing and inconclusive classifier all fall back), explain support
+- [ ] 2.1 Make cross-class fallback visible first: flag it on decisions and in `explain` (no behavior change)
+- [ ] 2.2 Class labels on targets, an allowed-class list per route, refusal when no allowed target remains; tests (strict refuses, lenient falls back, default unchanged); ADR
 
-## 3. Depends on the router decision log
+## 3. Session stickiness (investigate first)
 
-- [ ] 3.1 Review real decisions to tune the rules; revisit fail-closed private routing and stickiness
+- [ ] 3.1 Measure which clients send a usable session id and whether the existing per-session state can pin a conversation to a pool; decide whether it is a separate change
+
+## 4. Classifier-backed rule action (only on a measured trigger)
+
+- [ ] 4.1 Define the trigger from the decision log (catch-all share, default-pool cost per request) and revisit with real numbers
+- [ ] 4.2 If triggered: proposal and ADR for `classify` with timeout and fallback pool; implementation and tests (slow, failing and inconclusive classifier all fall back)
+
+## 5. Prerequisites for the demo and for cost-aware ordering
+
+- [ ] 5.1 Endpoint prices in real deployments so cost per request is meaningful
+- [ ] 5.2 Demo: a real Claude Code or Codex session through an auto route, with before/after cost and latency from `/v1/stats`
+- [ ] 5.3 After weeks of statistics: a separate proposal for advisory cost-aware ordering inside the allowed set, with exploration

@@ -3,7 +3,7 @@
 Living document. Update it in the same PR as any change that alters structure, request flow or
 component status (see [AGENTS.md](../AGENTS.md)). Diagrams are Mermaid and render on GitHub.
 
-Last updated: 2026-10-10 (`add-routing-statistics`: read-only performance statistics over the decision log; next: auto-routing on top of selectors, cost-aware choice informed by these numbers, then an admin API).
+Last updated: 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-in strict fallback, stickiness, advisory cost-aware ordering and a native Anthropic upstream added; packaging row corrected). Operator-surface order: `/metrics`, health-driven eligibility, native Anthropic upstream, then the admin API and database-managed keys.
 
 ## Component status
 
@@ -25,11 +25,16 @@ Last updated: 2026-10-10 (`add-routing-statistics`: read-only performance statis
 | Route explain: `POST /v1/route/explain` dry run (selected rule, why others did not apply, targets, health, outcome) | Implemented | `add-route-explain` |
 | Route selectors: ordered rules choose the route from the key, headers, tags and agent metadata; clients narrow, never widen | Implemented | `add-route-selectors` (ADR 0011) |
 | Endpoint health: per-endpoint circuit breaker with cooldown and probe, fail-open, `GET /v1/health` | Implemented | `add-endpoint-health` (ADR 0009) |
+| Auto-routing, step 1: one client-facing `auto` route whose selector rules pick the pool by intent (docs and example rules, no code) | Planned | `add-auto-routing` |
+| Pool classes (`private`, `public`, `paid`) with opt-in strict fallback: a route lists the classes it may fall through to, and a strict private route is refused instead of falling back to public; decisions and `explain` flag cross-class fallback | Planned | `add-auto-routing` |
+| Session stickiness for clients that send a session id (Claude Code, Codex, `x-switchyard-session-id`); needs investigation, and cannot help clients that send none | Investigate | `add-auto-routing` |
+| Cost-aware ordering inside the set rules allow: advisory first (explain reports the choice and why), with exploration; needs prices and weeks of statistics | Planned (after statistics have history) | not yet proposed |
+| Native Anthropic upstream (Anthropic Messages to providers without translating to chat completions); Switchyard's client already has an Anthropic backend, so size it by verifying that first | Planned | not yet proposed |
 | Health-driven target eligibility in the routing policy (tier substitution on a cold target) | Planned | not yet proposed |
 | Engineering hardening: invariants + architecture test, lints, structure refactors, CI gates, property tests, ADRs | Implemented | `harden-engineering` |
 | Graceful shutdown: drain, grace period, cancel, ledger flush before exit | Implemented | `add-graceful-shutdown` |
 | `count_tokens` / `responses/input_tokens`: local, conservative prompt-size estimates (no upstream call). `responses/compact` intentionally not implemented | Implemented | `add-count-tokens`, `add-responses-input-tokens` |
-| Packaging: tag-only release workflow (native runners), GHCR image, launchd service | Implemented (first release not cut yet) | `add-packaging` (ADR 0010) |
+| Packaging: tag-only release workflow (native runners), GHCR image, launchd service; releases published since 0.1.0 | Implemented | `add-packaging` (ADR 0010) |
 | Database-managed keys + a versioned, documented admin API (separate admin credential) | Planned (designed for in `add-cost-tracking`) | not yet proposed |
 | `/metrics` endpoint (Prometheus format) | Planned | not yet proposed |
 | Read-only status page served by the binary (endpoint health, spend, recent requests) | Planned | not yet proposed |
