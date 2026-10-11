@@ -2,6 +2,7 @@
 //! path never waits on the database.
 
 mod decisions;
+mod stats;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,6 +20,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 pub use decisions::{Attempt, Decision, DecisionQuery};
+pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, percentile};
 
 const SCHEMA_VERSION: i64 = 2;
 /// How often the writer deletes decisions past their retention.
@@ -213,6 +215,11 @@ impl Ledger {
     /// Decisions matching `query`, newest first.
     pub async fn decisions(&self, query: &DecisionQuery) -> Result<Vec<Decision>, LedgerError> {
         decisions::query(&self.pool, query).await
+    }
+
+    /// Performance statistics over the decision log and usage rows (read-only).
+    pub async fn stats(&self, query: &StatsQuery) -> Result<Stats, LedgerError> {
+        stats::compute(&self.pool, query).await
     }
 
     pub fn dropped(&self) -> u64 {

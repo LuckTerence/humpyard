@@ -77,6 +77,27 @@ curl "localhost:8080/v1/decisions?outcome=forbidden&limit=5" -H "Authorization: 
 curl "localhost:8080/v1/decisions?request_id=<id from the x-humpyard-request-id header>" -H "Authorization: Bearer $KEY"
 ```
 
+### Statistics
+
+`GET /v1/stats` summarizes how routes, targets and endpoints have actually performed, computed on
+read from the decision log and usage rows (nothing in routing uses these numbers). Parameters:
+`window` (`30m`, `24h`, `7d`; default 24h, never longer than `decision_retention_days`),
+`group_by` (`route` (default), `target` or `endpoint` as `provider/model`) and the filters `route`
+and `target`. Like decisions, a key sees only its own requests.
+
+```sh
+curl "localhost:8080/v1/stats?group_by=target&window=24h" -H "Authorization: Bearer $KEY"
+```
+
+Per group: `requests`, `attempts`, `outcomes` (attempts by class: `ok`, `rate_limit`, `timeout`,
+`server_error`, `connection`, ...), `failures` and `failure_rate`, `fallbacks` and `fallback_rate`
+(requests that needed more than one attempt), `latency_ms` (`p50`, `p90`, `p99` over all attempts,
+nearest rank, so slow timeouts show in the tail) and, from the usage rows, the `answered` count with
+`avg_cost_usd` and `avg_tokens` per answered request. `truncated` is true when the window held more
+than 50,000 decisions and only the newest were summarized. Small samples mislead: look at the counts
+before trusting a rate. `POST /v1/route/explain` adds the same recent numbers (last 24 hours: attempts,
+failure rate, p50) to each target it lists.
+
 Not recorded: why a `stage_router` or classifier route picked a tier (the engine does not expose
 it; you see the target that served), and attempts that fail after a stream has begun.
 

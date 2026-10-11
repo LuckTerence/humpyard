@@ -52,6 +52,7 @@ const TOKEN_COUNT_HEADER: &str = "x-humpyard-token-count";
 /// Response headers naming the route that served a request and the selector rule that chose it.
 mod decisions;
 mod explain;
+mod stats;
 
 const ROUTE_HEADER: &str = "x-humpyard-route";
 const RULE_HEADER: &str = "x-humpyard-rule";
@@ -442,6 +443,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/health", get(endpoint_health))
         .route("/v1/route/explain", post(explain::explain_route))
         .route("/v1/decisions", get(decisions::list_decisions))
+        .route("/v1/stats", get(stats::get_stats))
         .route(
             "/v1/messages/count_tokens",
             post(|s, h, b| count_tokens(s, WireFormat::AnthropicMessages, h, b)),

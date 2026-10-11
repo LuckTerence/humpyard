@@ -18,6 +18,7 @@ use super::{
     AppState, GatewayError, RequestInfo, Snapshot, authenticate, check_budget, plan_route,
 };
 use crate::config::CREDENTIAL_HEADERS;
+use crate::ledger::{GroupBy, GroupStats, StatsQuery};
 use crate::policy::{BudgetState, RequestMeta};
 use crate::select::{Facts, Features};
 
@@ -67,7 +68,8 @@ pub(super) async fn explain_route(
             .into_response_for(format);
         }
     };
-    axum::Json(explain(&state, &snap, caller.as_ref(), &request)).into_response()
+    let recent = recent_by_target(&state, caller.as_ref()).await;
+    axum::Json(explain(&state, &snap, caller.as_ref(), &request, &recent)).into_response()
 }
 
 impl Hypothetical {
@@ -94,11 +96,37 @@ impl Hypothetical {
     }
 }
 
+/// How each target has behaved for the caller over the last day, when a ledger exists.
+async fn recent_by_target(
+    state: &AppState,
+    caller: Option<&crate::auth::KeyRecord>,
+) -> HashMap<String, GroupStats> {
+    let Some(ledger) = state.accounting.ledger() else {
+        return HashMap::new();
+    };
+    // Decisions queued a moment ago should count.
+    ledger.flush().await;
+    let query = StatsQuery {
+        key: caller.map(|k| k.id.clone()),
+        since_ms: state.clock.now_ms() - super::stats::DEFAULT_WINDOW_MS,
+        group_by: GroupBy::Target,
+        route: None,
+        target: None,
+        row_cap: 50_000,
+    };
+    ledger
+        .stats(&query)
+        .await
+        .map(|s| s.groups.into_iter().map(|g| (g.group.clone(), g)).collect())
+        .unwrap_or_default()
+}
+
 fn explain(
     state: &AppState,
     snap: &Snapshot,
     caller: Option<&crate::auth::KeyRecord>,
     request: &Hypothetical,
+    recent: &HashMap<String, GroupStats>,
 ) -> Value {
     let header_facts = request.header_facts();
     let info = request.request_info();
@@ -187,7 +215,7 @@ fn explain(
                 .models
                 .models_for(&Category::Any)
                 .iter()
-                .map(|name| target_report(snap, name))
+                .map(|name| target_report(snap, name, recent))
                 .collect();
             report["targets"] = Value::Array(targets);
         }
@@ -202,7 +230,7 @@ fn explain(
     report
 }
 
-fn target_report(snap: &Snapshot, name: &ModelId) -> Value {
+fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, GroupStats>) -> Value {
     let endpoints: Vec<Value> = snap
         .targets
         .get(name)
@@ -221,7 +249,15 @@ fn target_report(snap: &Snapshot, name: &ModelId) -> Value {
                 .collect()
         })
         .unwrap_or_default();
-    json!({"target": name.to_string(), "endpoints": endpoints})
+    let recent = recent.get(name.as_str()).map(|g| {
+        json!({
+            "window_hours": 24,
+            "attempts": g.attempts,
+            "failure_rate": g.failure_rate(),
+            "p50_ms": g.p50_ms,
+        })
+    });
+    json!({"target": name.to_string(), "endpoints": endpoints, "recent": recent})
 }
 
 fn budget_name(state: BudgetState) -> &'static str {

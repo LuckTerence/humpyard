@@ -14,7 +14,7 @@ failover with per-endpoint circuit breakers and per-route control over which fai
 to the next target; selector rules that pick the route from the key, headers, tags and agent
 metadata and request content, with a dry-run `explain` call; a routing-policy seam; virtual keys, a SQLite usage
 ledger and per-key budgets; configuration reload without a restart (SIGHUP or polling); a routing decision log (what rule fired,
-which attempts failed over, why a request was refused) queryable per key. Planned: auto-routing (one model, pool chosen by intent),
+which attempts failed over, why a request was refused) queryable per key and summarized as read-only performance statistics. Planned: auto-routing (one model, pool chosen by intent),
 database-managed keys with an admin API, `/metrics`, and a status page (see
 [the roadmap](docs/architecture.md#component-status)). Design background in
 [docs/background.md](docs/background.md).
@@ -56,7 +56,8 @@ curl localhost:8080/v1/responses -H 'content-type: application/json' \
 Also: `GET /v1/models`, `GET /healthz`, `GET /v1/key/info` (a key's limits and spend),
 `GET /v1/health` (which provider endpoints are being skipped, and which config version is loaded), `POST /v1/route/explain` (what a
 request would do, without sending it), `GET /v1/decisions` (what the router did for your past requests; every response carries an
-`x-humpyard-request-id` to look one up), and `POST /v1/messages/count_tokens` and
+`x-humpyard-request-id` to look one up), `GET /v1/stats` (how routes, targets and endpoints have performed: failure mix,
+fallbacks, latency percentiles, cost per request), and `POST /v1/messages/count_tokens` and
 `POST /v1/responses/input_tokens` (conservative local estimates: no provider call, no cost).
 Verified with real Claude Code and Codex CLI sessions: see [docs/clients.md](docs/clients.md).
 Set `"stream": true` for SSE.
