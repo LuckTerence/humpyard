@@ -18,6 +18,11 @@ metadata, prompt size, tools and images, first match wins, and clients can narro
   cannot widen access; the budget and routing policy apply to the chosen route.
 - **Intent through headers, not model names.** Clients that cannot vary headers per request get one
   provider entry per intent, each with a static `x-humpyard-profile`; this works today.
+- **Statistics before cost-based choice.** Like a database optimizer, routing should earn
+  statistics before acting on them: `add-routing-statistics` summarizes the decision log
+  (failure mix, latency percentiles, cost per request) read-only. Cost-aware ordering inside the
+  set a rule allows, with exploration and operator overrides, comes after that and needs its own
+  proposal; rules for access and privacy stay hard constraints a cost model cannot override.
 - **Measure before building step 2.** The decision log is the prerequisite for tuning: without it
   there is no record of what the rules did over real traffic.
 
