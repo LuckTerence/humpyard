@@ -1,5 +1,38 @@
 # Using humpyard with coding agents
 
+## Telling the gateway what a request is
+
+[Auto routing](routing.md#auto-routing-recipe) chooses a pool from the request's content (size, tools,
+images, sub-agent) without any help from the client. What the gateway cannot guess is **intent**,
+for example "this conversation is private". A client says so by sending a header:
+
+| Header | Meaning |
+|---|---|
+| `x-humpyard-profile: <name>` | a free-form profile (for example `private`) that rules can match |
+| `x-humpyard-tag-<name>: <value>` | free-form tags (for example `x-humpyard-tag-privacy: private`) |
+
+Most agent harnesses send neither and cannot vary headers per request, but many let you set
+**static headers on a provider**. Then add one provider entry per intent, all with the same URL and
+key, and let the user pick the entry:
+
+```json
+"humpyard":         { "baseUrl": "https://gateway.example/v1", "api": "openai-completions", "apiKey": "...", "models": [{ "id": "auto", "name": "auto" }] },
+"humpyard-private": { "baseUrl": "https://gateway.example/v1", "api": "openai-completions", "apiKey": "...",
+                      "headers": { "x-humpyard-profile": "private" }, "models": [{ "id": "auto", "name": "auto-private" }] }
+```
+
+Both ask for `auto`; the second always carries the private profile, so the privacy rule fires.
+
+- **OpenClaw:** per-provider `headers` are part of its provider schema (checked against its config
+  schema, version 2026.9.5; the entry above is the shape).
+- **Codex CLI:** custom providers accept `http_headers` in `config.toml` (seen in its source; not
+  yet exercised against the gateway).
+- **Claude Code:** I have not verified a way to add headers; use a separate gateway key per intent
+  and match on `key` in a rule until that is checked.
+- A client that sends **no** identity (the OpenAI JS SDK, used by some harnesses, sends only a
+  generic user-agent) can still be distinguished by **key**: one gateway key per consumer, matched
+  with `when = { key = "..." }`.
+
 ## Claude Code (verified 2026-10-08, Claude Code 2.1.285)
 
 Claude Code speaks the Anthropic Messages protocol, which humpyard accepts at `/v1/messages`

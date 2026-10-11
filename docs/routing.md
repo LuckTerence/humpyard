@@ -122,6 +122,49 @@ check and the routing policy, which then apply to the chosen route. Loading the 
 a rule names an unknown route, an unknown condition, a credential header, repeats a name, or
 follows a catch-all (it could never match). See [ADR 0011](adr/0011-selectors-choose-the-route.md).
 
+## Auto routing recipe
+
+The goal: clients always ask for one model, `auto`, and the gateway picks the pool from what the
+request is. It needs no new feature, only selector rules; [examples/auto-routing.toml](../examples/auto-routing.toml)
+is a complete, tested starting point (the test suite loads that very file).
+
+| # | Rule | Condition | Pool |
+|---|---|---|---|
+| 1 | `private-profile` / `private-tag` | the client sent `x-humpyard-profile: private`, or `x-humpyard-tag-privacy: private` | `private-pool` (your own hardware) |
+| 2 | `images` | the request carries images | `vision` |
+| 3 | `long-prompt` | estimated prompt of 30,000 tokens or more | `long-context` |
+| 4 | `subagent` | the client marked it as a sub-agent turn | `cheap` |
+| 5 | `tool-turns` | the request defines tools | `capable` |
+| 6 | `everyday` | anything else sent to `auto` | `cheap` |
+
+Things the recipe gets right, and that you must keep when you adapt it:
+
+- **Scope every rule with `model = "auto"`.** Selectors see every request. Without that condition,
+  a client that asks for `capable` directly would be re-routed too. (Tested: a direct request for
+  a pool bypasses the rules.)
+- **Order encodes priority.** Privacy is first, so a private request that also has images, tools
+  and a huge prompt stays private. A sub-agent turn with tools stays cheap because rule 4 comes
+  before rule 5. Use `explain` to check any ordering question before sending traffic:
+  `curl localhost:8080/v1/route/explain -H "Authorization: Bearer $KEY" -d '{"model":"auto","tools":true,"subagent":true}'`.
+- **`auto` is also a real route.** It is where a request lands when no rule applies or every
+  matching rule is skipped for the key, so it must be safe for anything.
+- **The private pool has no public fallback here.** The private route lists only the local target,
+  so a failure is an error, never a silent trip to a public provider. If you prefer to degrade to
+  public, add a public target to that route, knowingly. (A first-class way to declare which classes
+  a route may fall through to is planned; see `add-auto-routing`.)
+- **Keys and the allowlist.** A rule only applies if the key may use its route
+  (`allowed_routes`). A key limited to `auto` is therefore never sent to a pool (the rules are
+  skipped and `auto` itself serves, as tested), and a key that lists the pool routes can also
+  request them directly. There is no "reach pools only through `auto`" setting yet; give each
+  consumer the routes it may use, and keep privacy-sensitive routes off keys that should not
+  reach them.
+- **Prompt size is an estimate** (the same conservative number `count_tokens` returns), so leave
+  headroom in the threshold.
+
+How a client expresses intent without code changes is in [clients.md](clients.md#telling-the-gateway-what-a-request-is).
+Once traffic flows, `GET /v1/decisions?rule=tool-turns` and `GET /v1/stats?group_by=route` show how
+often each rule fires and what each pool costs and how long it takes: tune the thresholds from that.
+
 ## Failover
 
 - **Within a target**, endpoints are tried in order. The gateway moves to the next endpoint on

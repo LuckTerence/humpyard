@@ -25,7 +25,7 @@ Last updated: 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-i
 | Route explain: `POST /v1/route/explain` dry run (selected rule, why others did not apply, targets, health, outcome) | Implemented | `add-route-explain` |
 | Route selectors: ordered rules choose the route from the key, headers, tags and agent metadata; clients narrow, never widen | Implemented | `add-route-selectors` (ADR 0011) |
 | Endpoint health: per-endpoint circuit breaker with cooldown and probe, fail-open, `GET /v1/health` | Implemented | `add-endpoint-health` (ADR 0009) |
-| Auto-routing, step 1: one client-facing `auto` route whose selector rules pick the pool by intent (docs and example rules, no code) | Planned | `add-auto-routing` |
+| Auto-routing, step 1: one client-facing `auto` route whose selector rules pick the pool by intent (docs and a tested example, no code) | Implemented | `add-auto-routing` |
 | Pool classes (`private`, `public`, `paid`) with opt-in strict fallback: a route lists the classes it may fall through to, and a strict private route is refused instead of falling back to public; decisions and `explain` flag cross-class fallback | Planned | `add-auto-routing` |
 | Session stickiness for clients that send a session id (Claude Code, Codex, `x-switchyard-session-id`); needs investigation, and cannot help clients that send none | Investigate | `add-auto-routing` |
 | Cost-aware ordering inside the set rules allow: advisory first (explain reports the choice and why), with exploration; needs prices and weeks of statistics | Planned (after statistics have history) | not yet proposed |

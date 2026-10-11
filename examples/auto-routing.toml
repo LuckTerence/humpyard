@@ -1,0 +1,103 @@
+# Auto routing: clients always ask for the model `auto`; selector rules pick the pool by intent.
+# See docs/routing.md ("Auto routing recipe"). Check with:
+#   humpyard check-config examples/auto-routing.toml   (needs the three *_KEY variables set)
+# and try a decision without sending anything:
+#   curl localhost:8080/v1/route/explain -H "Authorization: Bearer $KEY" \
+#     -d '{"model":"auto","headers":{"x-humpyard-profile":"private"}}'
+
+listen = "127.0.0.1:8080"
+
+[ledger]
+path = "humpyard.db"
+
+[providers.local]                    # a model server on your own machine or network
+base_url = "http://127.0.0.1:11434/v1"
+api_key_env = "LOCAL_KEY"
+
+[providers.free]                     # a free or cheap aggregator
+base_url = "https://free.example/v1"
+api_key_env = "FREE_KEY"
+
+[providers.paid]
+base_url = "https://paid.example/v1"
+api_key_env = "PAID_KEY"
+
+# ---- pools: one target per kind of work ----
+[targets.local-model]
+endpoints = [{ provider = "local", model = "local-coder" }]
+[targets.free-fast]
+endpoints = [{ provider = "free", model = "fast-small" }]
+[targets.paid-fast]
+endpoints = [{ provider = "paid", model = "fast-small" }]
+[targets.paid-capable]
+endpoints = [{ provider = "paid", model = "capable-large" }]
+[targets.paid-long]
+endpoints = [{ provider = "paid", model = "long-context" }]
+[targets.paid-vision]
+endpoints = [{ provider = "paid", model = "vision" }]
+
+# ---- routes: what the rules can choose. Keep a key's `allowed_routes` in step with these. ----
+[routes.cheap]                       # everyday work: free first, paid when the free tier fails
+type = "passthrough"
+targets = ["free-fast", "paid-fast"]
+
+[routes.capable]                     # tool-using turns and anything needing a stronger model
+type = "passthrough"
+targets = ["paid-capable"]
+
+[routes.long-context]
+type = "passthrough"
+targets = ["paid-long"]
+
+[routes.vision]
+type = "passthrough"
+targets = ["paid-vision"]
+
+[routes.private-pool]                # stays on your own hardware
+type = "passthrough"
+targets = ["local-model"]
+
+# `auto` is itself a safe route: it is where a request lands when every rule is skipped (a key may
+# not use any rule's route) or none matches.
+[routes.auto]
+type = "passthrough"
+targets = ["free-fast", "paid-fast"]
+
+# ---- the auto rules: first match wins, and EVERY rule is scoped to model = "auto" ----
+# (Selectors see every request. Without the model condition a client asking for `capable`
+# directly would be re-routed too.)
+
+[[select]]                           # 1. privacy first: a client says "private" and nothing else wins
+name = "private-profile"
+when = { model = "auto", profile = "private" }
+route = "private-pool"
+
+[[select]]
+name = "private-tag"
+when = { model = "auto", tag = { privacy = "private" } }
+route = "private-pool"
+
+[[select]]                           # 2. images need a vision model
+name = "images"
+when = { model = "auto", images = true }
+route = "vision"
+
+[[select]]                           # 3. very long prompts need a long-context model
+name = "long-prompt"
+when = { model = "auto", prompt_tokens = { min = 30000 } }
+route = "long-context"
+
+[[select]]                           # 4. sub-agents do narrow work: keep it cheap
+name = "subagent"
+when = { model = "auto", subagent = true }
+route = "cheap"
+
+[[select]]                           # 5. tool-using turns get the stronger model
+name = "tool-turns"
+when = { model = "auto", tools = true }
+route = "capable"
+
+[[select]]                           # 6. catch-all for `auto`: everyday chat
+name = "everyday"
+when = { model = "auto" }
+route = "cheap"

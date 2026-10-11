@@ -2,8 +2,8 @@
 
 ## 1. The auto pattern (configuration and docs; no code)
 
-- [ ] 1.1 Example rule set and `docs/routing.md` recipe: one `auto` route, intent rules (private tag, sub-agent, long prompt, tools), safe catch-all; verify each rule with `explain` tests
-- [ ] 1.2 Document client-side intent hints (static provider headers, one provider entry per intent) in docs/clients.md
+- [x] 1.1 Example rule set and `docs/routing.md` recipe: one `auto` route, intent rules (private tag, sub-agent, long prompt, tools), safe catch-all; verify each rule with `explain` tests
+- [x] 1.2 Document client-side intent hints (static provider headers, one provider entry per intent) in docs/clients.md
 
 ## 2. Pool classes and opt-in strict fallback
 
