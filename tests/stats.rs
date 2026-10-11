@@ -316,6 +316,7 @@ fn attempt(target: &str, outcome: &str, ms: u64) -> Attempt {
         model: "m".into(),
         outcome: outcome.into(),
         ms,
+        class: None,
     }
 }
 

@@ -141,6 +141,9 @@ pub(super) struct RawProvider {
 #[serde(deny_unknown_fields)]
 pub(super) struct RawTarget {
     pub(super) endpoints: Vec<Endpoint>,
+    /// What kind of pool this is, for reporting: conventionally `private`, `public` or `paid`.
+    /// A fallback between targets of different classes is flagged on decisions and in `explain`.
+    pub(super) class: Option<String>,
 }
 
 fn default_decision_retention_days() -> u64 {

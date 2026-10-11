@@ -372,6 +372,7 @@ impl RoutedLlmClient for Metered {
                     model: a.model,
                     outcome: a.outcome,
                     ms: a.ms,
+                    class: None,
                 });
             })
             .await

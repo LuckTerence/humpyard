@@ -19,6 +19,9 @@ pub struct Attempt {
     /// `ok`, or the failure class (`rate_limit`, `timeout`, `server_error`, ...).
     pub outcome: String,
     pub ms: u64,
+    /// The target's class label, when it has one (filled in when the decision is recorded).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
 }
 
 /// What the router decided for one request, and how it went.
@@ -57,6 +60,22 @@ pub struct Decision {
 }
 
 impl Decision {
+    /// Whether the attempts spanned more than one target class (for example a private target
+    /// failing over to a public one). `None` when any attempt's class is unknown, or there were
+    /// no attempts.
+    #[must_use]
+    pub fn crossed_classes(&self) -> Option<bool> {
+        let classes: Vec<&str> = self
+            .attempts
+            .iter()
+            .filter_map(|a| a.class.as_deref())
+            .collect();
+        if classes.is_empty() || classes.len() != self.attempts.len() {
+            return None;
+        }
+        Some(classes.iter().any(|c| *c != classes[0]))
+    }
+
     /// Truncates a text to 200 characters.
     #[must_use]
     pub fn clip(message: &str) -> String {

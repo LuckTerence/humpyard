@@ -671,7 +671,7 @@ async fn infer(
 ) -> Response {
     let snap = state.snapshot();
     let started = std::time::Instant::now();
-    let mut guard = DecisionGuard::new(&state, format);
+    let mut guard = DecisionGuard::new(&state, &snap, format);
     let request_id = guard.decision.request_id.clone();
     let caller = match authenticate(&snap, &headers).await {
         Ok(caller) => caller,
@@ -736,12 +736,14 @@ struct DecisionGuard {
     ctx: Option<Arc<CallContext>>,
     started: std::time::Instant,
     recorded: bool,
+    /// Target class labels, applied to the attempts when the decision is recorded.
+    classes: HashMap<String, String>,
     /// Kept apart from `decision` because recording moves the decision out.
     decision_id: String,
 }
 
 impl DecisionGuard {
-    fn new(state: &AppState, format: WireFormat) -> Self {
+    fn new(state: &AppState, snap: &Snapshot, format: WireFormat) -> Self {
         let now_ms = state.clock.now_ms();
         let request_id = new_request_id(now_ms);
         Self {
@@ -756,6 +758,12 @@ impl DecisionGuard {
             ctx: None,
             started: std::time::Instant::now(),
             recorded: false,
+            classes: snap
+                .config
+                .target_classes
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
         }
     }
 
@@ -766,6 +774,9 @@ impl DecisionGuard {
         }
         if let Some(ctx) = &self.ctx {
             self.decision.attempts = ctx.attempts();
+            for attempt in &mut self.decision.attempts {
+                attempt.class = self.classes.get(&attempt.target).cloned();
+            }
         }
         self.decision.status = status;
         self.decision.outcome = outcome.to_string();

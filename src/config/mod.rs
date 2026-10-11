@@ -44,6 +44,8 @@ pub struct Config {
     pub decision_retention_days: u64,
     pub providers: BTreeMap<String, Provider>,
     pub targets: BTreeMap<String, Vec<Endpoint>>,
+    /// Optional class label per target (`private`, `public`, `paid`, or your own).
+    pub target_classes: BTreeMap<String, String>,
     pub routes: BTreeMap<String, RouteSpec>,
     /// Virtual keys by id. Empty means the gateway is open and unbudgeted.
     pub keys: BTreeMap<String, KeyConfig>,
@@ -165,6 +167,11 @@ impl Config {
             reload_poll_secs: raw.reload_poll_secs,
             decision_retention_days: raw.decision_retention_days,
             providers,
+            target_classes: raw
+                .targets
+                .iter()
+                .filter_map(|(id, t)| Some((id.clone(), t.class.clone()?)))
+                .collect(),
             targets: raw
                 .targets
                 .into_iter()

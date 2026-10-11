@@ -56,8 +56,9 @@ join), the key, session and protocol, the model the client asked for, the route 
 that applied and whether it came from a `selector` or the `requested_model`, rules that matched but
 were skipped because the key may not use their route, the budget state, the targets that were
 eligible, request features (streaming, estimated prompt size when a rule needs it, tools, images),
-the **attempts** in order (target, provider, model, outcome such as `ok`, `rate_limit`,
-`timeout`, `server_error`, and milliseconds), the final status and `outcome`, the serving target and
+the **attempts** in order (target, provider, model, class, outcome such as `ok`, `rate_limit`,
+`timeout`, `server_error`, and milliseconds), `fallback_crossed_classes` (whether those attempts spanned
+more than one [target class](routing.md#target-classes)), the final status and `outcome`, the serving target and
 the latency. Refusals are decisions too (`unauthorized`, `forbidden`, `unknown_model`,
 `budget_exhausted`, `no_eligible_target`, ...), and a request the client abandons is recorded as
 `cancelled`.

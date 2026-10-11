@@ -24,16 +24,22 @@ api_key_env = "PAID_KEY"
 
 # ---- pools: one target per kind of work ----
 [targets.local-model]
+class = "private"              # labels only report: see docs/routing.md ("Target classes")
 endpoints = [{ provider = "local", model = "local-coder" }]
 [targets.free-fast]
+class = "public"
 endpoints = [{ provider = "free", model = "fast-small" }]
 [targets.paid-fast]
+class = "paid"
 endpoints = [{ provider = "paid", model = "fast-small" }]
 [targets.paid-capable]
+class = "paid"
 endpoints = [{ provider = "paid", model = "capable-large" }]
 [targets.paid-long]
+class = "paid"
 endpoints = [{ provider = "paid", model = "long-context" }]
 [targets.paid-vision]
+class = "paid"
 endpoints = [{ provider = "paid", model = "vision" }]
 
 # ---- routes: what the rules can choose. Keep a key's `allowed_routes` in step with these. ----
