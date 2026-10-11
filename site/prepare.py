@@ -39,6 +39,12 @@ def main() -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(rewrite(path.read_text(), rel))
     (OUT / "CNAME").write_text("humpyard.dev\n")  # the custom domain, kept with the site
+    # Non-Markdown assets (the theme stylesheet) are copied as they are.
+    for asset in SRC.rglob("*"):
+        if asset.is_file() and asset.suffix != ".md":
+            dest = OUT / asset.relative_to(SRC)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(asset, dest)
     # The example configs as pages, so they are readable and searchable on the site.
     examples = OUT / "examples.md"
     parts = ["# Example configs\n\nCopy and adapt. Both load and validate as shipped.\n"]

@@ -393,24 +393,31 @@ async fn latency_percentiles_match_known_values_and_old_decisions_fall_outside_t
 async fn statistics_are_read_only_and_a_broken_ledger_fails_the_read_not_requests() {
     let r = rig().await;
     r.ask("alice", "plain").await;
-    let before = Ledger::open(&r.db)
-        .await
-        .unwrap()
-        .entries_since(0)
-        .await
-        .unwrap()
-        .len();
+    // The ledger writes asynchronously: wait until the request's usage row is stored, so the
+    // counts below compare steady states, not a write in flight.
+    let count = || async {
+        Ledger::open(&r.db)
+            .await
+            .unwrap()
+            .entries_since(0)
+            .await
+            .unwrap()
+            .len()
+    };
+    let mut before = 0;
+    for _ in 0..100 {
+        before = count().await;
+        if before >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(before, 1, "the request's usage row was never written");
     for _ in 0..3 {
         r.stats("alice", "?group_by=endpoint").await;
     }
-    let after = Ledger::open(&r.db)
-        .await
-        .unwrap()
-        .entries_since(0)
-        .await
-        .unwrap()
-        .len();
-    assert_eq!(before, after, "reading statistics writes nothing");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(count().await, before, "reading statistics writes nothing");
 
     let pool = sqlx::SqlitePool::connect(&format!("sqlite://{}", r.db.display()))
         .await

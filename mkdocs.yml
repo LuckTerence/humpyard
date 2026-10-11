@@ -14,15 +14,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: cyan
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
@@ -39,9 +39,7 @@ theme:
     - content.code.copy        # copy button on code blocks
     - content.code.annotate    # numbered callouts inside code blocks
 
-  font:
-    text: Roboto
-    code: Roboto Mono
+  font: false                  # system fonts (set in extra.css): no Google Fonts request
 
   icon:
     repo: fontawesome/brands/github
@@ -68,6 +66,9 @@ markdown_extensions:
 
 plugins:
   - search
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md
