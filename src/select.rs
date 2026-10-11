@@ -122,13 +122,31 @@ impl Selectors {
         facts: &Facts<'_>,
         permitted: impl Fn(&str) -> bool,
     ) -> Option<Chosen<'a>> {
-        self.rules
-            .iter()
-            .find(|rule| matches(&rule.when, facts) && permitted(&rule.route))
-            .map(|rule| Chosen {
-                rule: &rule.label,
-                route: &rule.route,
-            })
+        self.choose_detailed(facts, permitted).0
+    }
+
+    /// Like [`Selectors::choose`], also naming the rules that matched but were skipped because
+    /// `permitted` refused their route (for the decision log).
+    pub fn choose_detailed<'a>(
+        &'a self,
+        facts: &Facts<'_>,
+        permitted: impl Fn(&str) -> bool,
+    ) -> (Option<Chosen<'a>>, Vec<&'a str>) {
+        let mut skipped = Vec::new();
+        for rule in &self.rules {
+            if !matches(&rule.when, facts) {
+                continue;
+            }
+            if permitted(&rule.route) {
+                let chosen = Chosen {
+                    rule: &rule.label,
+                    route: &rule.route,
+                };
+                return (Some(chosen), skipped);
+            }
+            skipped.push(rule.label.as_str());
+        }
+        (None, skipped)
     }
 }
 

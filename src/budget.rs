@@ -344,6 +344,7 @@ mod tests {
             cost_micro_usd: cost,
             outcome: "ok".into(),
             usage_missing: false,
+            request_id: None,
         };
         ledger.record(base(day_start_ms(now) + 5, 400_000));
         ledger.record(base(month_start_ms(now) + 5, 100_000));

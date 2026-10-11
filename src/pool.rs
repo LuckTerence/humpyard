@@ -13,7 +13,7 @@ use switchyard_protocol::{
 
 use crate::clock::Clock;
 use crate::config::{Config, Endpoint, HealthConfig, Price, Provider};
-use crate::error::TIMEOUT_MARKER;
+use crate::error::{TIMEOUT_MARKER, fallback_class};
 use crate::health::{Admission, Breaker, Snapshot, Transition};
 
 /// Response header naming the provider endpoint that served a request.
@@ -57,6 +57,16 @@ impl Drop for ProbeSlot<'_> {
             breaker.release_probe();
         }
     }
+}
+
+/// What happened on one endpoint, reported to the caller as the walk proceeds (decision log).
+#[derive(Clone, Debug)]
+pub struct EndpointAttempt {
+    pub provider: String,
+    pub model: String,
+    /// `ok`, the failure class (`rate_limit`, `timeout`, ...), or `error` for other failures.
+    pub outcome: String,
+    pub ms: u64,
 }
 
 /// Which endpoint served a call, so usage can be attributed and priced.
@@ -128,7 +138,7 @@ fn adapt_for_chat_providers(request: &mut Request) {
 #[async_trait]
 impl RoutedLlmClient for TargetClient {
     async fn call(&self, request: Request) -> Result<Response, LlmClientError> {
-        self.call_detailed(request)
+        self.call_detailed(request, &mut |_| {})
             .await
             .map(|(response, _)| response)
     }
@@ -162,10 +172,12 @@ impl TargetClient {
         admitted
     }
 
-    /// Like `call`, also reporting which endpoint served the response.
+    /// Like `call`, also reporting which endpoint served the response and, through `on_attempt`,
+    /// every endpoint attempt as it ends.
     pub async fn call_detailed(
         &self,
         request: Request,
+        on_attempt: &mut (dyn FnMut(EndpointAttempt) + Send),
     ) -> Result<(Response, Served), LlmClientError> {
         let mut request = request;
         adapt_for_chat_providers(&mut request);
@@ -176,7 +188,20 @@ impl TargetClient {
             let endpoint = &self.endpoints[*index];
             let mut attempt = request.clone();
             attempt.llm_request.model = Some(endpoint.model.clone());
-            match endpoint.client.call(attempt).await {
+            let started = std::time::Instant::now();
+            let result = endpoint.client.call(attempt).await;
+            on_attempt(EndpointAttempt {
+                provider: endpoint.provider.clone(),
+                model: endpoint.model.clone(),
+                outcome: match &result {
+                    Ok(_) => "ok".to_string(),
+                    Err(error) => fallback_class(error)
+                        .map_or("error", crate::config::FallbackClass::as_str)
+                        .to_string(),
+                },
+                ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            });
+            match result {
                 Ok(mut response) => {
                     slot.resolved();
                     endpoint.log(endpoint.breaker.success());

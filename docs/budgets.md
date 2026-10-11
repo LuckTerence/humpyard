@@ -47,6 +47,39 @@ second limit) it exits non-zero and logs that entries may be lost. A hard kill (
 power loss) can still lose entries that were queued but not yet written, so budgets rebuilt after
 one may be slightly low.
 
+## The decision log
+
+Next to the usage rows, the same database holds one **decision** per inference request, so you can
+see afterwards what the router did and why, not only what it cost. A decision records: the request
+id (also returned as `x-humpyard-request-id`, and stored on the request's usage rows so the two
+join), the key, session and protocol, the model the client asked for, the route and selector rule
+that applied and whether it came from a `selector` or the `requested_model`, rules that matched but
+were skipped because the key may not use their route, the budget state, the targets that were
+eligible, request features (streaming, estimated prompt size when a rule needs it, tools, images),
+the **attempts** in order (target, provider, model, outcome such as `ok`, `rate_limit`,
+`timeout`, `server_error`, and milliseconds), the final status and `outcome`, the serving target and
+the latency. Refusals are decisions too (`unauthorized`, `forbidden`, `unknown_model`,
+`budget_exhausted`, `no_eligible_target`, ...), and a request the client abandons is recorded as
+`cancelled`.
+
+It is **metadata only**: no prompts, no responses, error text clipped to 200 characters, and the
+requested model name clipped too. It is written by the same asynchronous writer as usage (never
+delaying a response, flushed on shutdown), and pruned after `decision_retention_days` (top level,
+default 90, `0` keeps everything; changing it needs a restart). An older database is upgraded in
+place when the gateway first opens it.
+
+Read it with `GET /v1/decisions` (a key sees only its **own** decisions, newest first; an open
+gateway sees all; there is no admin view yet). Filters: `route`, `rule`, `outcome`, `request_id`,
+`since_ms` (unix milliseconds) and `limit` (default 50, at most 500):
+
+```sh
+curl "localhost:8080/v1/decisions?outcome=forbidden&limit=5" -H "Authorization: Bearer $KEY"
+curl "localhost:8080/v1/decisions?request_id=<id from the x-humpyard-request-id header>" -H "Authorization: Bearer $KEY"
+```
+
+Not recorded: why a `stage_router` or classifier route picked a tier (the engine does not expose
+it; you see the target that served), and attempts that fail after a stream has begun.
+
 ## Budgets
 
 Per key: `daily_usd`, `monthly_usd`, `daily_tokens`, `monthly_tokens` over UTC calendar days and

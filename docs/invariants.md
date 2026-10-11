@@ -56,6 +56,14 @@ in an ADR (`docs/adr/`) in the same change.
     request uses one configuration from start to finish. *Enforced by* `tests/reload.rs` and
     `tests/reload_process.rs`; see [ADR-0012](adr/0012-config-snapshot-reloaded-on-sighup.md).
 
+16. **Decisions are metadata only, and recording them never hurts a request.** A decision holds
+    routing facts, never a prompt or a response; client-supplied text is clipped; the write path
+    is the ledger's bounded queue, so a failing database cannot fail or delay a request; a key
+    reads only its own decisions. *Enforced by* `tests/decisions.rs` (including
+    `prompts_and_responses_never_reach_the_database` and
+    `a_broken_decision_table_never_affects_requests`); see
+    [ADR-0013](adr/0013-decisions-recorded-per-request.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

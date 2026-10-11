@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-10-10
 - Supersedes: none
-- Change: `openspec/changes/add-decision-log` (or its archive path)
+- Change: [add-decision-log](../../openspec/changes/archive/2026-10-10-add-decision-log)
 
 ## Context
 
