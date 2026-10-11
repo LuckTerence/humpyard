@@ -86,6 +86,9 @@ See [examples/config.toml](examples/config.toml). Three kinds of entries:
   match wins; a rule is skipped when the key may not use its route, so clients can narrow but never
   widen. Responses carry `x-humpyard-route` and `x-humpyard-rule`. See
   [docs/routing.md](docs/routing.md#selecting-the-route).
+- Auto routing (one `auto` model, pool chosen by intent): a tested recipe in
+  [examples/auto-routing.toml](examples/auto-routing.toml) and
+  [docs/routing.md](docs/routing.md#auto-routing-recipe).
 - `decision_retention_days` (top level, default 90): how long routing decisions are kept; see
   [docs/budgets.md](docs/budgets.md#the-decision-log).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,
