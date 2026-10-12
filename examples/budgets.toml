@@ -32,7 +32,7 @@ api_key_env = "OPENROUTER_API_KEY"
 endpoints = [{ provider = "openrouter", model = "meta-llama/llama-3.3-70b-instruct", price = { input = 0.1, output = 0.3 } }]
 
 [targets.smart]
-endpoints = [{ provider = "openrouter", model = "anthropic/claude-sonnet-4.5", price = { input = 3.0, output = 15.0, cached_input = 0.3 }}]
+endpoints = [{ provider = "openrouter", model = "anthropic/claude-sonnet-4.5", price = { input = 3.0, output = 15.0, cached_input = 0.3, tiers = [{ above_tokens = 200000, input = 6.0, output = 22.5, cached_input = 0.6 }] }}]
 
 [targets.free]
 endpoints = [{ provider = "openrouter", model = "meta-llama/llama-3.3-70b-instruct:free", price = { input = 0.0, output = 0.0 } }]

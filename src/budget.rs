@@ -186,11 +186,16 @@ impl BudgetPolicy {
             .targets
             .iter()
             .map(|(name, endpoints)| {
+                let free_price = crate::config::Price::FREE;
                 let prices = endpoints
                     .iter()
-                    .map(|e| e.price.unwrap_or(crate::config::Price::FREE));
-                let max_output = prices.clone().map(|p| p.output).fold(0.0, f64::max);
-                let free = prices.clone().all(|p| p.is_free());
+                    .map(|e| e.price.as_ref().unwrap_or(&free_price));
+                // The highest rate across tiers: a model dear on long prompts is not cheap.
+                let max_output = prices
+                    .clone()
+                    .map(crate::config::Price::max_output)
+                    .fold(0.0, f64::max);
+                let free = prices.clone().all(crate::config::Price::is_free);
                 (name.clone(), TargetCost { max_output, free })
             })
             .collect();
@@ -244,6 +249,33 @@ mod tests {
             daily_usd: Some(daily),
             ..Limits::default()
         }
+    }
+
+    #[test]
+    fn a_target_is_as_dear_as_its_dearest_tier() {
+        let config = crate::config::Config::from_toml(
+            r#"listen = "127.0.0.1:0"
+[providers.p]
+base_url = "http://x"
+api_key_env = "K"
+[targets.plain]
+endpoints = [{ provider = "p", model = "m", price = { input = 1.0, output = 2.0 } }]
+[targets.long-dear]
+endpoints = [{ provider = "p", model = "m", price = { input = 1.0, output = 2.0, tiers = [{ above_tokens = 200000, input = 2.0, output = 20.0 }] } }]
+[targets.free-then-paid]
+endpoints = [{ provider = "p", model = "m", price = { input = 0.0, output = 0.0, tiers = [{ above_tokens = 1000, input = 1.0, output = 1.0 }] } }]
+"#,
+            |_| Some("k".into()),
+        )
+        .unwrap();
+        let policy = BudgetPolicy::new(&config);
+        assert_eq!(policy.costs["plain"].max_output, 2.0);
+        assert_eq!(policy.costs["long-dear"].max_output, 20.0);
+        assert!(!policy.costs["long-dear"].free);
+        assert!(
+            !policy.costs["free-then-paid"].free,
+            "a paid tier makes a target not free"
+        );
     }
 
     #[test]

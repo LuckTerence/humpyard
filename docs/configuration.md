@@ -16,6 +16,8 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   `x-switchyard-session-id` so per-session state (latches, holds) persists across requests.
   If the selected target fails entirely, the next target the algorithm returned is tried; a
   route's `fallback_on = ["overflow", ...]` limits which failures may do that (default: all).
+- `price = { input, output, cached_input, tiers }` on an endpoint (USD per million tokens;
+  `tiers` raise the rates above a prompt size): see [Prices and cost](budgets.md#prices-and-cost).
 - `class = "private"` on a target (optional): a label (`private`, `public`, `paid`, or your own) that
   decisions and `explain` use to flag a fallback that crosses classes; see
   [Target classes](routing.md#target-classes).

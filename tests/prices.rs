@@ -161,7 +161,7 @@ fn matching_ignores_float_noise_and_an_unset_cached_price_equals_the_input_price
         r#"[targets.t]
 endpoints = [
   { provider = "opencode", model = "glm-5.3-flash", price = { input = 0.15000000001, output = 0.5, cached_input = 0.03 } },
-  { provider = "opencode", model = "legacy-tier", price = { input = 1.0, output = 2.0 } },
+  { provider = "opencode", model = "legacy-tier", price = { input = 1.0, output = 2.0, tiers = [{ above_tokens = 200000, input = 2.0, output = 4.0 }] } },
 ]"#,
     );
     let rows = prices::compare(&cfg, "opencode", &data());
@@ -176,7 +176,7 @@ endpoints = [{ provider = "opencode", model = "glm-5.3-flash", price = { input =
     // Without a source cache price there is nothing to disagree about.
     let uncached = config(
         r#"[targets.t]
-endpoints = [{ provider = "opencode", model = "legacy-tier", price = { input = 1.0, output = 2.0, cached_input = 0.5 } }]"#,
+endpoints = [{ provider = "opencode", model = "legacy-tier", price = { input = 1.0, output = 2.0, cached_input = 0.5, tiers = [{ above_tokens = 200000, input = 2.0, output = 4.0 }] } }]"#,
     );
     let rows = prices::compare(&uncached, "opencode", &data());
     assert_eq!(rows[0].status, Status::Ok);
@@ -223,16 +223,24 @@ endpoints = [{ provider = "opencode", model = "retired-model" }]"#,
     let rows = prices::compare(&cfg, "opencode", &data());
     let snippet = prices::render_snippet(&rows, "models-dev:opencode-go", "2026-10-12");
     assert!(snippet.starts_with("# Proposed prices from models-dev:opencode-go, read 2026-10-12."));
-    assert!(snippet.contains("price = { input = 0.3, output = 1.2, cached_input = 0.06 }"));
-    assert!(
-        snippet.contains("above 256000 prompt tokens"),
-        "tiers are surfaced, not applied"
-    );
+    assert!(snippet.contains(
+        "price = { input = 0.3, output = 1.2, cached_input = 0.06, tiers = [{ above_tokens = 256000, input = 0.45, output = 1.8, cached_input = 0.09 }, { above_tokens = 512000, input = 0.6, output = 2.4, cached_input = 0.12 }] }"
+    ));
     assert!(snippet.contains("NOT PROPOSED: the source does not list this model"));
     // What it prints must itself be valid TOML a person can paste.
     let line = snippet.lines().find(|l| l.starts_with("price = ")).unwrap();
     let parsed: toml::Table = toml::from_str(line).unwrap();
     assert_eq!(parsed["price"]["input"].as_float(), Some(0.3));
+    assert_eq!(
+        parsed["price"]["tiers"][1]["above_tokens"].as_integer(),
+        Some(512_000)
+    );
+    // Pasting the proposal back into the config makes the endpoint match the source.
+    let pasted = config(&format!(
+        "[targets.m3]\nendpoints = [{{ provider = \"opencode\", model = \"minimax-m3\", {line} }}]"
+    ));
+    let rows = prices::compare(&pasted, "opencode", &data());
+    assert_eq!(rows[0].status, Status::Ok, "{rows:?}");
 }
 
 #[tokio::test]

@@ -28,6 +28,24 @@ any USD budget must price every endpoint (use `0` for free models), so nothing i
 Reasoning tokens are part of the output tokens the provider reports (they are recorded as detail,
 not added again), and cache-read tokens bill at `cached_input` (default: `input`).
 
+### Tiered prices
+
+Some providers charge more once a prompt is long. A price can list **tiers**, each with its own
+rates, applied when a call's *prompt* (new input, cache reads and cache writes together) is longer
+than `above_tokens`:
+
+```toml
+price = { input = 3.0, output = 15.0, cached_input = 0.3,
+          tiers = [{ above_tokens = 200000, input = 6.0, output = 22.5, cached_input = 0.6 }] }
+```
+
+A prompt of exactly `above_tokens` still costs the base price; one token more switches to the tier
+(the highest threshold exceeded wins, and a tier's `cached_input` defaults to that tier's `input`).
+Thresholds must be above 0 and increasing. For budgets and `restricted_max_output_price` an endpoint
+is as dear as its **dearest** tier, and one that is free only up to a size is not free, so a model
+that is expensive on long prompts is never mistaken for a cheap one. If a stream ends without
+usage, the output-only estimate uses the base rates (the prompt size is unknown), a lower bound.
+
 ### Keeping prices current
 
 Typing prices by hand goes stale, so a command can read them from a public source and compare. It
@@ -51,9 +69,9 @@ proposal, then copy the entries into your config as you would any other change.
 
 Source data is treated as untrusted: it is fetched over https with a timeout and size limit, every
 number must be finite and sane, and a record that is not is reported as unusable rather than
-guessed. Some sources publish **tiers** (a higher rate above a prompt size, or at peak hours); they
-are shown in the output as notes, and the base price is what is proposed, so cost for very long
-prompts can be underestimated until tiered prices are supported. On a flat-fee plan (for example
+guessed. Sources that publish prompt-size **tiers** have them proposed and compared along with the
+base price, so a config missing a tier shows as drift. Peak-hour pricing is not modelled: it is
+shown as a note and the base price is kept. On a flat-fee plan (for example
 OpenCode Go, which caps each model at a dollar amount of usage priced at these list rates), cost
 means *how much of the cap you used*, not money billed.
 

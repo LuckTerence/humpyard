@@ -6,7 +6,9 @@ use switchyard_protocol::Usage;
 use crate::config::Price;
 use crate::num::{f64_from_u64, u64_from_f64_rounded};
 
-/// Cost of `usage` at `price`, rounded to the nearest micro-USD.
+/// Cost of `usage` at `price`, rounded to the nearest micro-USD. The rates are the base price, or
+/// the tier whose threshold the call's whole prompt (new input, cache reads and cache writes)
+/// exceeds.
 ///
 /// Non-cached input and cache-creation tokens bill at the input price, cache reads at the cached
 /// price (the input price when none is configured), and output tokens at the output price.
@@ -15,6 +17,12 @@ use crate::num::{f64_from_u64, u64_from_f64_rounded};
 /// formats, so they are not added again (see `tests/usage.rs` and
 /// `tests/switchyard_assumptions.rs`, which pin this against Switchyard's decoders).
 pub fn cost_micro_usd(usage: &Usage, price: &Price) -> u64 {
+    let prompt = usage
+        .input_tokens
+        .unwrap_or(0)
+        .saturating_add(usage.cache_creation_input_tokens().unwrap_or(0))
+        .saturating_add(usage.cached_input_tokens().unwrap_or(0));
+    let rates = price.rates_for(prompt);
     let input = f64_from_u64(
         usage
             .input_tokens
@@ -23,9 +31,9 @@ pub fn cost_micro_usd(usage: &Usage, price: &Price) -> u64 {
     );
     let cached = f64_from_u64(usage.cached_input_tokens().unwrap_or(0));
     let output = f64_from_u64(usage.output_tokens.unwrap_or(0));
-    let micro = input * price.input
-        + cached * price.cached_input.unwrap_or(price.input)
-        + output * price.output;
+    let micro = input * rates.input
+        + cached * rates.cached_input.unwrap_or(rates.input)
+        + output * rates.output;
     u64_from_f64_rounded(micro)
 }
 
@@ -59,6 +67,7 @@ mod tests {
         input: 1.0,
         output: 4.0,
         cached_input: None,
+        tiers: Vec::new(),
     };
 
     #[test]
@@ -82,6 +91,80 @@ mod tests {
         assert_eq!(cost_micro_usd(&u, &PRICE), 100 + 1_000);
     }
 
+    fn tiered() -> Price {
+        Price {
+            tiers: vec![
+                crate::config::PriceTier {
+                    above_tokens: 100_000,
+                    input: 3.0,
+                    output: 12.0,
+                    cached_input: Some(0.3),
+                },
+                crate::config::PriceTier {
+                    above_tokens: 500_000,
+                    input: 6.0,
+                    output: 24.0,
+                    cached_input: None,
+                },
+            ],
+            ..PRICE
+        }
+    }
+
+    #[test]
+    fn a_tier_applies_only_once_the_prompt_exceeds_its_threshold() {
+        let p = tiered();
+        // At exactly the threshold the base price still applies; one token over switches tiers.
+        assert_eq!(cost_micro_usd(&usage(100_000, 1_000), &p), 100_000 + 4_000);
+        assert_eq!(
+            cost_micro_usd(&usage(100_001, 1_000), &p),
+            100_001 * 3 + 1_000 * 12
+        );
+        // The highest threshold exceeded wins, and a tier without a cached price uses its input.
+        assert_eq!(cost_micro_usd(&usage(500_001, 0), &p), 500_001 * 6);
+        assert_eq!(p.rates_for(0).input, 1.0);
+        assert_eq!(p.rates_for(500_000).input, 3.0);
+        assert_eq!(p.rates_for(500_001).input, 6.0);
+    }
+
+    #[test]
+    fn the_prompt_size_that_picks_the_tier_includes_cached_and_cache_written_tokens() {
+        let mut u = usage(10, 0);
+        u.cache = Some(Box::new(InputCacheUsage {
+            cached_input_tokens: Some(95_000),
+            cache_creation_input_tokens: Some(5_000),
+        }));
+        // 10 + 95,000 + 5,000 = 100,010 prompt tokens: over the first tier, though only 10 are
+        // fresh input. Cache writes bill at the tier's input, cache reads at its cached price.
+        assert_eq!(
+            cost_micro_usd(&u, &tiered()),
+            (10 + 5_000) * 3 + 28_500 // 95,000 cached reads at $0.30/M
+        );
+    }
+
+    #[test]
+    fn the_highest_rate_stands_for_the_price_and_a_paid_tier_is_not_free() {
+        assert_eq!(tiered().max_output(), 24.0);
+        assert_eq!(PRICE.max_output(), 4.0);
+        assert!(!tiered().is_free());
+        let free_then_paid = Price {
+            input: 0.0,
+            output: 0.0,
+            tiers: vec![crate::config::PriceTier {
+                above_tokens: 1,
+                input: 1.0,
+                output: 1.0,
+                cached_input: None,
+            }],
+            ..PRICE
+        };
+        assert!(
+            !free_then_paid.is_free(),
+            "free only up to a size is not free"
+        );
+        assert!(Price::FREE.is_free());
+    }
+
     #[test]
     fn reasoning_tokens_are_part_of_output_and_not_billed_twice() {
         // 10 prompt tokens, 100 completion tokens of which 90 are reasoning.
@@ -103,6 +186,7 @@ mod tests {
             input: 0.3,
             output: 0.0,
             cached_input: None,
+            tiers: Vec::new(),
         };
         assert_eq!(cost_micro_usd(&usage(5, 0), &tiny), 2); // 1.5 rounds up
     }
@@ -159,6 +243,7 @@ mod properties {
                 input,
                 output,
                 cached_input,
+                tiers: Vec::new(),
             })
     }
 

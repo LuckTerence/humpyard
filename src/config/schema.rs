@@ -178,13 +178,41 @@ pub struct Endpoint {
 }
 
 /// Token prices in USD per million tokens (numerically equal to micro-USD per token).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Price {
     pub input: f64,
     pub output: f64,
     /// Price of input tokens served from the provider's cache; defaults to `input`.
     pub cached_input: Option<f64>,
+    /// Higher (or lower) rates that apply once the prompt exceeds a size, ordered by threshold.
+    #[serde(default)]
+    pub tiers: Vec<PriceTier>,
+}
+
+/// Rates that replace the base price when a call's prompt exceeds `above_tokens`.
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PriceTier {
+    pub above_tokens: u64,
+    pub input: f64,
+    pub output: f64,
+    /// Defaults to this tier's `input`.
+    pub cached_input: Option<f64>,
+}
+
+/// The rates in force for one call: the base price or one of its tiers.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rates {
+    pub input: f64,
+    pub output: f64,
+    pub cached_input: Option<f64>,
+}
+
+impl Rates {
+    pub fn is_free(&self) -> bool {
+        self.input == 0.0 && self.output == 0.0 && self.cached_input.unwrap_or(0.0) == 0.0
+    }
 }
 
 impl Price {
@@ -192,10 +220,52 @@ impl Price {
         input: 0.0,
         output: 0.0,
         cached_input: None,
+        tiers: Vec::new(),
     };
 
+    fn base(&self) -> Rates {
+        Rates {
+            input: self.input,
+            output: self.output,
+            cached_input: self.cached_input,
+        }
+    }
+
+    /// Every rate set this price can charge: the base and each tier.
+    fn all_rates(&self) -> impl Iterator<Item = Rates> + '_ {
+        std::iter::once(self.base()).chain(self.tiers.iter().map(|t| Rates {
+            input: t.input,
+            output: t.output,
+            cached_input: t.cached_input,
+        }))
+    }
+
+    /// The rates for a call whose prompt is `prompt_tokens` long: the tier with the highest
+    /// threshold the prompt exceeds, or the base price.
+    pub fn rates_for(&self, prompt_tokens: u64) -> Rates {
+        self.tiers
+            .iter()
+            .rev()
+            .find(|t| prompt_tokens > t.above_tokens)
+            .map_or_else(
+                || self.base(),
+                |t| Rates {
+                    input: t.input,
+                    output: t.output,
+                    cached_input: t.cached_input,
+                },
+            )
+    }
+
+    /// The highest output rate across the base and every tier. Policy and budgets compare this, so
+    /// a model that is expensive on long prompts is never mistaken for a cheap one.
+    pub fn max_output(&self) -> f64 {
+        self.all_rates().map(|r| r.output).fold(0.0, f64::max)
+    }
+
+    /// Free at every size: a free base with a paid tier is not free.
     pub fn is_free(&self) -> bool {
-        self.input == 0.0 && self.output == 0.0 && self.cached_input.unwrap_or(0.0) == 0.0
+        self.all_rates().all(|r| r.is_free())
     }
 }
 
