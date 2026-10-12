@@ -233,15 +233,29 @@ pub(super) fn validate_budgets(raw: &RawConfig) -> Result<(), ConfigError> {
     }
     for (id, target) in &raw.targets {
         for endpoint in &target.endpoints {
-            if let Some(price) = endpoint.price {
+            if let Some(price) = &endpoint.price {
+                let tier_rates = price
+                    .tiers
+                    .iter()
+                    .flat_map(|t| [Some(t.input), Some(t.output), t.cached_input]);
                 let valid = [Some(price.input), Some(price.output), price.cached_input]
                     .into_iter()
+                    .chain(tier_rates)
                     .flatten()
                     .all(finite_non_negative);
                 if !valid {
                     return Err(invalid(format!(
                         "target `{id}`: endpoint prices must not be negative"
                     )));
+                }
+                let mut previous = 0;
+                for tier in &price.tiers {
+                    if tier.above_tokens <= previous {
+                        return Err(invalid(format!(
+                            "target `{id}`: price tiers need `above_tokens` above 0 and in increasing order"
+                        )));
+                    }
+                    previous = tier.above_tokens;
                 }
             }
         }

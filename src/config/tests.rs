@@ -233,7 +233,11 @@ fn valid_budget_config_loads() {
     assert_eq!(config.ledger.as_deref(), Some(Path::new("humpyard.db")));
     assert_eq!(config.budget.restricted_at, 0.9);
     assert_eq!(
-        config.targets["smart"][0].price.unwrap().cached_input,
+        config.targets["smart"][0]
+            .price
+            .as_ref()
+            .unwrap()
+            .cached_input,
         Some(0.3)
     );
 }
@@ -418,4 +422,68 @@ fn decision_retention_defaults_to_ninety_days_and_is_validated() {
     );
     let too_long = format!("decision_retention_days = 3651\n{VALID}");
     assert!(err(&too_long).contains("decision_retention_days"));
+}
+
+fn with_price(price: &str) -> String {
+    format!(
+        "{VALID}\n[targets.priced]\nendpoints = [{{ provider = \"groq\", model = \"m\", price = {price} }}]\n"
+    )
+}
+
+#[test]
+fn price_tiers_load_in_order_with_optional_cached_prices() {
+    let config = Config::from_toml(
+        &with_price(
+            "{ input = 1.0, output = 2.0, tiers = [{ above_tokens = 1000, input = 2.0, output = 4.0, cached_input = 0.5 }, { above_tokens = 5000, input = 3.0, output = 6.0 }] }",
+        ),
+        env,
+    )
+    .unwrap();
+    let price = config.targets["priced"][0].price.as_ref().unwrap();
+    assert_eq!(price.tiers.len(), 2);
+    assert_eq!(price.tiers[0].above_tokens, 1000);
+    assert_eq!(price.tiers[0].cached_input, Some(0.5));
+    assert_eq!(price.tiers[1].cached_input, None);
+    // A price without tiers is unchanged.
+    let plain = Config::from_toml(&with_price("{ input = 1.0, output = 2.0 }"), env).unwrap();
+    assert_eq!(
+        plain.targets["priced"][0].price.as_ref().unwrap().tiers,
+        Vec::new()
+    );
+}
+
+#[test]
+fn bad_price_tiers_are_rejected_with_the_target_named() {
+    for (tiers, expected) in [
+        (
+            "[{ above_tokens = 0, input = 1.0, output = 1.0 }]",
+            "increasing order",
+        ),
+        (
+            "[{ above_tokens = 5, input = 1.0, output = 1.0 }, { above_tokens = 5, input = 1.0, output = 1.0 }]",
+            "increasing order",
+        ),
+        (
+            "[{ above_tokens = 9, input = 1.0, output = 1.0 }, { above_tokens = 5, input = 1.0, output = 1.0 }]",
+            "increasing order",
+        ),
+        (
+            "[{ above_tokens = 5, input = -1.0, output = 1.0 }]",
+            "must not be negative",
+        ),
+        (
+            "[{ above_tokens = 5, input = 1.0, output = 1.0, cached_input = -0.1 }]",
+            "must not be negative",
+        ),
+        ("[{ above_tokens = 5, input = 1.0 }]", "output"),
+        (
+            "[{ above_tokens = 5, input = 1.0, output = 1.0, surprise = 1 }]",
+            "surprise",
+        ),
+    ] {
+        let message = err(&with_price(&format!(
+            "{{ input = 1.0, output = 2.0, tiers = {tiers} }}"
+        )));
+        assert!(message.contains(expected), "{tiers}: {message}");
+    }
 }

@@ -36,7 +36,7 @@ Last updated: 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-i
 | `count_tokens` / `responses/input_tokens`: local, conservative prompt-size estimates (no upstream call). `responses/compact` intentionally not implemented | Implemented | `add-count-tokens`, `add-responses-input-tokens` |
 | Packaging: tag-only release workflow (native runners), GHCR image, launchd service; releases published since 0.1.0 | Implemented | `add-packaging` (ADR 0010) |
 | Database-managed keys + a versioned, documented admin API (separate admin credential) | Planned (designed for in `add-cost-tracking`) | not yet proposed |
-| Price import and drift check: `humpyard prices import/check` from public sources (models.dev first), tiered prices, never applied or fetched at runtime (ADR 0014) | Core implemented: `prices import`/`check` against models.dev; `price_source` in config, tiered prices and the scheduled check still to do | `add-price-import` |
+| Price import and drift check: `humpyard prices import/check` from public sources (models.dev first), tiered prices, never applied or fetched at runtime (ADR 0014) | Core implemented: `prices import`/`check` against models.dev; tiered prices implemented (cost by prompt size, highest tier for policy); `price_source` in config and the scheduled check still to do | `add-price-import` |
 | `/metrics` endpoint (Prometheus format) | Planned | not yet proposed |
 | Read-only status page served by the binary (endpoint health, spend, recent requests) | Planned | not yet proposed |
 | Full admin GUI (key and budget management, spend charts) | Later; not ruled out | not yet proposed |

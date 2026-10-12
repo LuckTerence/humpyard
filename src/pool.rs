@@ -213,7 +213,7 @@ impl TargetClient {
                     let served = Served {
                         provider: endpoint.provider.clone(),
                         model: endpoint.model.clone(),
-                        price: endpoint.price,
+                        price: endpoint.price.clone(),
                     };
                     return Ok((response, served));
                 }
@@ -294,7 +294,7 @@ fn endpoint_client(
     Ok(TargetEndpoint {
         provider: endpoint.provider.clone(),
         model: endpoint.model.clone(),
-        price: endpoint.price,
+        price: endpoint.price.clone(),
         client,
         breaker,
         base_url: provider.base_url.clone(),

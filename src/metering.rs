@@ -288,7 +288,11 @@ impl StreamRecorder {
         .into();
         if let Some(usage) = self.usage.as_ref().filter(|u| !usage_is_empty(u)) {
             fill_tokens(&mut entry, usage);
-            entry.cost_micro_usd = self.template.price.map_or(0, |p| cost_micro_usd(usage, &p));
+            entry.cost_micro_usd = self
+                .template
+                .price
+                .as_ref()
+                .map_or(0, |p| cost_micro_usd(usage, p));
             entry.usage_missing = false;
         } else if self.streamed_bytes > 0 {
             // The provider's usage chunk never arrived (cut stream, dropped client), but it
@@ -297,12 +301,13 @@ impl StreamRecorder {
             // the row as an estimate.
             let output = tokens_for_bytes(self.streamed_bytes);
             entry.output_tokens = output;
-            entry.cost_micro_usd = self.template.price.map_or(0, |p| {
+            // The prompt size is unknown here too, so the base rates apply (a lower bound).
+            entry.cost_micro_usd = self.template.price.as_ref().map_or(0, |p| {
                 let usage = Usage {
                     output_tokens: Some(output),
                     ..Usage::default()
                 };
-                cost_micro_usd(&usage, &p)
+                cost_micro_usd(&usage, p)
             });
             tracing::warn!(
                 target = %entry.target,
@@ -385,7 +390,10 @@ impl RoutedLlmClient for Metered {
         match &response.llm_response {
             LlmResponse::Agg(agg) if !usage_is_empty(&agg.usage) => {
                 fill_tokens(&mut entry, &agg.usage);
-                entry.cost_micro_usd = served.price.map_or(0, |p| cost_micro_usd(&agg.usage, &p));
+                entry.cost_micro_usd = served
+                    .price
+                    .as_ref()
+                    .map_or(0, |p| cost_micro_usd(&agg.usage, p));
                 entry.usage_missing = false;
                 self.ctx.buffered.lock().push((id, entry));
             }

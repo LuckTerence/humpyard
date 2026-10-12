@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::config::{Config, Price};
+use crate::config::{Config, Price, PriceTier};
 
 /// Where models.dev publishes its dataset.
 pub const MODELS_DEV_URL: &str = "https://models.dev/api.json";
@@ -32,22 +32,13 @@ pub enum PriceError {
     Config(String),
 }
 
-/// A higher rate that applies once the prompt exceeds `above_tokens`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Tier {
-    pub above_tokens: u64,
-    pub input: f64,
-    pub output: f64,
-    pub cached_input: Option<f64>,
-}
-
 /// One model's price as a source states it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PriceRecord {
     pub input: f64,
     pub output: f64,
     pub cached_input: Option<f64>,
-    pub tiers: Vec<Tier>,
+    pub tiers: Vec<PriceTier>,
     /// Things the source says that this record cannot express (for example peak-hour pricing).
     pub notes: Vec<String>,
 }
@@ -99,7 +90,7 @@ fn parse_cost(cost: &Value) -> Result<PriceRecord, String> {
             let kind = spec.and_then(|t| t.get("type")).and_then(Value::as_str);
             let size = spec.and_then(|t| t.get("size")).and_then(Value::as_u64);
             match (kind, size) {
-                (Some("context"), Some(above_tokens)) => record.tiers.push(Tier {
+                (Some("context"), Some(above_tokens)) => record.tiers.push(PriceTier {
                     above_tokens,
                     input: required_price(tier, "input")?,
                     output: required_price(tier, "output")?,
@@ -112,7 +103,7 @@ fn parse_cost(cost: &Value) -> Result<PriceRecord, String> {
             }
         }
     } else if let Some(over) = cost.get("context_over_200k").filter(|v| v.is_object()) {
-        record.tiers.push(Tier {
+        record.tiers.push(PriceTier {
             above_tokens: LEGACY_TIER_ABOVE_TOKENS,
             input: required_price(over, "input")?,
             output: required_price(over, "output")?,
@@ -262,12 +253,30 @@ fn approx(a: f64, b: f64) -> bool {
     (a - b).abs() <= 1e-9 * 1.0_f64.max(a.abs()).max(b.abs())
 }
 
+/// Whether a cached price agrees: a source that states none leaves nothing to disagree about.
+fn cached_agrees(configured: Option<f64>, input: f64, source: Option<f64>) -> bool {
+    source.is_none_or(|c| approx(configured.unwrap_or(input), c))
+}
+
+fn tiers_agree(configured: &[PriceTier], source: &[PriceTier]) -> bool {
+    configured.len() == source.len()
+        && configured.iter().zip(source).all(|(c, s)| {
+            c.above_tokens == s.above_tokens
+                && approx(c.input, s.input)
+                && approx(c.output, s.output)
+                && cached_agrees(c.cached_input, c.input, s.cached_input)
+        })
+}
+
 fn same(configured: &Price, source: &PriceRecord) -> bool {
     approx(configured.input, source.input)
         && approx(configured.output, source.output)
-        && source
-            .cached_input
-            .is_none_or(|c| approx(configured.cached_input.unwrap_or(configured.input), c))
+        && cached_agrees(
+            configured.cached_input,
+            configured.input,
+            source.cached_input,
+        )
+        && tiers_agree(&configured.tiers, &source.tiers)
 }
 
 /// Compares every endpoint of `provider` in `config` with the source. Models are matched by exact id.
@@ -291,7 +300,7 @@ pub fn compare(config: &Config, provider: &str, data: &SourceData) -> Vec<Row> {
                 target: target.clone(),
                 provider: endpoint.provider.clone(),
                 model: endpoint.model.clone(),
-                configured: endpoint.price,
+                configured: endpoint.price.clone(),
                 source,
                 status,
             });
@@ -312,24 +321,39 @@ fn price_text(input: f64, output: f64, cached: Option<f64>) -> String {
     }
 }
 
+/// A price as it is written in the config, including any tiers.
+fn full_text(input: f64, output: f64, cached: Option<f64>, tiers: &[PriceTier]) -> String {
+    let mut text = price_text(input, output, cached);
+    if !tiers.is_empty() {
+        let list: Vec<String> = tiers
+            .iter()
+            .map(|t| {
+                format!(
+                    "{{ above_tokens = {}, {} }}",
+                    t.above_tokens,
+                    price_text(t.input, t.output, t.cached_input)
+                )
+            })
+            .collect();
+        add(&mut text, format_args!(", tiers = [{}]", list.join(", ")));
+    }
+    text
+}
+
 fn describe(price: Option<&Price>) -> String {
     price.map_or_else(
         || "no price".to_string(),
-        |p| price_text(p.input, p.output, p.cached_input),
+        |p| full_text(p.input, p.output, p.cached_input, &p.tiers),
     )
 }
 
-fn extras(record: &PriceRecord) -> Vec<String> {
-    let mut lines = Vec::new();
-    for tier in &record.tiers {
-        lines.push(format!(
-            "above {} prompt tokens the source charges {} (tiers are not applied yet; the base price is used)",
-            tier.above_tokens,
-            price_text(tier.input, tier.output, tier.cached_input)
-        ));
-    }
-    lines.extend(record.notes.iter().cloned());
-    lines
+fn source_text(record: &PriceRecord) -> String {
+    full_text(
+        record.input,
+        record.output,
+        record.cached_input,
+        &record.tiers,
+    )
 }
 
 fn add(out: &mut String, text: std::fmt::Arguments<'_>) {
@@ -357,10 +381,7 @@ pub fn render_snippet(rows: &[Row], source: &str, read_on: &str) -> String {
             (Some(record), _) => {
                 add(
                     &mut out,
-                    format_args!(
-                        "price = {{ {} }}\n",
-                        price_text(record.input, record.output, record.cached_input)
-                    ),
+                    format_args!("price = {{ {} }}\n", source_text(record)),
                 );
                 if row.status == Status::Differs {
                     add(
@@ -368,7 +389,7 @@ pub fn render_snippet(rows: &[Row], source: &str, read_on: &str) -> String {
                         format_args!("#   currently: {}\n", describe(row.configured.as_ref())),
                     );
                 }
-                for line in extras(record) {
+                for line in &record.notes {
                     add(&mut out, format_args!("#   note: {line}\n"));
                 }
             }
@@ -404,15 +425,12 @@ pub fn render_report(rows: &[Row], source: &str, read_on: &str) -> String {
                 format_args!(
                     "\n    configured: {}\n    source:     {}",
                     describe(row.configured.as_ref()),
-                    price_text(record.input, record.output, record.cached_input)
+                    source_text(record)
                 ),
             ),
             (Status::Unpriced, Some(record)) => add(
                 &mut out,
-                format_args!(
-                    "\n    source: {}",
-                    price_text(record.input, record.output, record.cached_input)
-                ),
+                format_args!("\n    source: {}", source_text(record)),
             ),
             (Status::Unusable(reason), _) => add(&mut out, format_args!("\n    {reason}")),
             _ => {}
@@ -433,7 +451,19 @@ pub fn render_report(rows: &[Row], source: &str, read_on: &str) -> String {
 /// The drift report as JSON, for scheduled jobs.
 pub fn render_json(rows: &[Row], source: &str, read_on: &str) -> Value {
     let price = |p: Option<&Price>| {
-        p.map(|p| json!({"input": p.input, "output": p.output, "cached_input": p.cached_input}))
+        p.map(|p| {
+            json!({
+                "input": p.input,
+                "output": p.output,
+                "cached_input": p.cached_input,
+                "tiers": p.tiers.iter().map(|t| json!({
+                    "above_tokens": t.above_tokens,
+                    "input": t.input,
+                    "output": t.output,
+                    "cached_input": t.cached_input,
+                })).collect::<Vec<_>>(),
+            })
+        })
     };
     json!({
         "source": source,
