@@ -1,0 +1,35 @@
+{
+  "opencode-go": {
+    "id": "opencode-go",
+    "models": {
+      "glm-5.3-flash": { "cost": { "input": 0.15, "output": 0.5, "cache_read": 0.03 } },
+      "kimi-k3": { "cost": { "input": 3, "output": 15, "cache_read": 0.3 } },
+      "minimax-m3": {
+        "cost": {
+          "input": 0.3, "output": 1.2, "cache_read": 0.06,
+          "tiers": [
+            { "input": 0.6, "output": 2.4, "cache_read": 0.12, "tier": { "type": "context", "size": 512000 } },
+            { "input": 0.45, "output": 1.8, "cache_read": 0.09, "tier": { "type": "context", "size": 256000 } }
+          ],
+          "context_over_200k": { "input": 0.6, "output": 2.4, "cache_read": 0.12 }
+        }
+      },
+      "legacy-tier": {
+        "cost": { "input": 1, "output": 2, "context_over_200k": { "input": 2, "output": 4 } }
+      },
+      "deepseek-peak": {
+        "cost": {
+          "input": 0.15, "output": 0.6,
+          "tiers": [ { "input": 0.3, "output": 1.2, "tier": { "type": "time", "window": "peak" } } ]
+        }
+      },
+      "free-model": { "cost": { "input": 0, "output": 0 } },
+      "negative": { "cost": { "input": -1, "output": 2 } },
+      "absurd": { "cost": { "input": 1, "output": 1e9 } },
+      "stringy": { "cost": { "input": "0.3", "output": 1.2 } },
+      "no-output": { "cost": { "input": 1 } },
+      "no-cost": { "name": "has no price" }
+    }
+  },
+  "other-provider": { "models": { "glm-5.3-flash": { "cost": { "input": 9, "output": 9 } } } }
+}

@@ -68,6 +68,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ),
         ("error", module(Engine, &["config"])),
         ("pricing", module(Engine, &["config", "num"])),
+        // Reads price sources for the `prices` command only; see the serving-path test below.
+        ("prices", module(Core, &["config"])),
         (
             "pool",
             module(Engine, &["clock", "config", "error", "health"]),
@@ -280,6 +282,28 @@ fn the_source_tree_obeys_the_architecture_rules() {
         all.is_empty(),
         "architecture violations (see docs/invariants.md):\n  - {}",
         all.join("\n  - ")
+    );
+}
+
+/// ADR 0014: prices reach the serving process through the config only. Only the `prices` command
+/// (`main`) may use the module that reads price sources, so `serve` can never fetch prices.
+#[test]
+fn only_the_prices_command_uses_the_price_source_module() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let module = module_of(path.strip_prefix(&src).unwrap());
+        if matches!(module.as_str(), "prices" | "main" | "lib") {
+            continue;
+        }
+        let code = production_code(&fs::read_to_string(&path).unwrap());
+        if code.contains("prices::") || code.contains("humpyard::prices") {
+            offenders.push(path.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these files use the price-source module, which only `humpyard prices` may (ADR 0014): {offenders:?}"
     );
 }
 

@@ -28,6 +28,35 @@ any USD budget must price every endpoint (use `0` for free models), so nothing i
 Reasoning tokens are part of the output tokens the provider reports (they are recorded as detail,
 not added again), and cache-read tokens bill at `cached_input` (default: `input`).
 
+### Keeping prices current
+
+Typing prices by hand goes stale, so a command can read them from a public source and compare. It
+**proposes and reports, and never changes your config or a running gateway**; the gateway itself
+never fetches prices (prices come from the config file only).
+
+```sh
+# Print the price entries the source proposes for the endpoints of one provider:
+humpyard prices import --config config.toml --source models-dev:opencode-go --provider opencode
+
+# Report drift: a price that changed, an endpoint with no price, a model the source no longer lists.
+humpyard prices check  --config config.toml --source models-dev:opencode-go --provider opencode
+humpyard prices check  ... --json
+```
+
+`--source` is `models-dev:<provider id>`, using the open [models.dev](https://models.dev) dataset
+(for example `opencode-go`, `openrouter`, `groq`); `--provider` is the provider's name in your
+config. Models are matched by exact id. `check` exits **0** when everything matches, **1** on drift
+and **2** when the source or config could not be used, so a scheduled job can alert on it. Review a
+proposal, then copy the entries into your config as you would any other change.
+
+Source data is treated as untrusted: it is fetched over https with a timeout and size limit, every
+number must be finite and sane, and a record that is not is reported as unusable rather than
+guessed. Some sources publish **tiers** (a higher rate above a prompt size, or at peak hours); they
+are shown in the output as notes, and the base price is what is proposed, so cost for very long
+prompts can be underestimated until tiered prices are supported. On a flat-fee plan (for example
+OpenCode Go, which caps each model at a dollar amount of usage priced at these list rates), cost
+means *how much of the cap you used*, not money billed.
+
 ## The usage ledger
 
 `[ledger] path = "…"` is a SQLite file. Every upstream call is one row: time, key id, session,

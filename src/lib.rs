@@ -12,6 +12,7 @@ pub mod metering;
 pub mod num;
 pub mod policy;
 pub mod pool;
+pub mod prices;
 pub mod pricing;
 pub mod routing;
 pub mod select;
