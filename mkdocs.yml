@@ -101,3 +101,4 @@ nav:
           - "0011 Selectors": adr/0011-selectors-choose-the-route.md
           - "0012 Config reload": adr/0012-config-snapshot-reloaded-on-sighup.md
           - "0013 Decision log": adr/0013-decisions-recorded-per-request.md
+          - "0014 Price import": adr/0014-prices-are-proposed-never-fetched-at-runtime.md
