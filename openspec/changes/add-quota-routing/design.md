@@ -18,7 +18,7 @@ has value while serving, so it must be fetched at runtime, which needs its own b
   takes the rule's alternative or the catch-all. Quota can therefore never turn a working setup into
   a refusing one.
 - **Poll off the request path.** One background task per quota-sourced provider, interval
-  `quota_poll_secs` (default 60, minimum 15) with a short timeout, no retry storm (the next tick is
+  `quota_poll_secs` (default 60, 1 to 3600) with a short timeout, no retry storm (the next tick is
   the retry), and failures logged at most once per state change. Requests read the latest snapshot
   with no I/O.
 - **Credential scope.** The poll uses the provider's configured API key, because that is what the

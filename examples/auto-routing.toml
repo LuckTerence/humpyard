@@ -21,6 +21,7 @@ api_key_env = "FREE_KEY"
 [providers.paid]
 base_url = "https://paid.example/v1"
 api_key_env = "PAID_KEY"
+# quota_source = "opencode-go"             # optional: read this provider's usage windows (see docs/routing.md)
 # price_source = "models-dev:openrouter"   # optional: `humpyard prices check` compares prices with it
 
 # ---- pools: one target per kind of work ----

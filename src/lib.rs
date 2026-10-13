@@ -14,6 +14,7 @@ pub mod policy;
 pub mod pool;
 pub mod prices;
 pub mod pricing;
+pub mod quota;
 pub mod routing;
 pub mod select;
 pub mod server;

@@ -53,6 +53,14 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
     if raw.reload_poll_secs > 3600 {
         return Err(invalid("reload_poll_secs must be between 0 and 3600"));
     }
+    if !(1..=3600).contains(&raw.quota_poll_secs) {
+        return Err(invalid("quota_poll_secs must be between 1 and 3600"));
+    }
+    if raw.quota_stale_secs < raw.quota_poll_secs || raw.quota_stale_secs > 86_400 {
+        return Err(invalid(
+            "quota_stale_secs must be at least quota_poll_secs and at most 86400",
+        ));
+    }
     if raw.decision_retention_days > 3650 {
         return Err(invalid(
             "decision_retention_days must be between 0 and 3650",
@@ -66,6 +74,9 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
     }
     for (name, provider) in &raw.providers {
         validate_headers(name, &provider.headers)?;
+        if let Some(source) = &provider.quota_source {
+            validate_quota_source(name, source, &provider.base_url)?;
+        }
         if let Some(spec) = &provider.price_source
             && parse_price_source(spec).is_none()
         {
@@ -317,6 +328,29 @@ pub(super) fn validate_budgets(raw: &RawConfig) -> Result<(), ConfigError> {
         }
     }
     Ok(())
+}
+
+/// The quota sources the gateway can poll while serving.
+pub const QUOTA_SOURCES: [&str; 1] = ["opencode-go"];
+
+/// A quota source must be known, and its provider must be reachable over https (plain http only
+/// to a loopback host, so tests can serve a fixture): the provider's key goes with every poll.
+fn validate_quota_source(provider: &str, source: &str, base_url: &str) -> Result<(), ConfigError> {
+    if !QUOTA_SOURCES.contains(&source) {
+        return Err(invalid(format!(
+            "providers.{provider}.quota_source: `{source}` is not a known quota source; the available source is `opencode-go`"
+        )));
+    }
+    let parsed = reqwest::Url::parse(base_url)
+        .map_err(|e| invalid(format!("providers.{provider}.base_url is not a URL: {e}")))?;
+    let loopback = matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
+    if parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback) {
+        Ok(())
+    } else {
+        Err(invalid(format!(
+            "providers.{provider}: a quota_source needs an https base_url, because the provider's key is sent with every poll"
+        )))
+    }
 }
 
 /// The kinds of price source `humpyard prices` can read.
