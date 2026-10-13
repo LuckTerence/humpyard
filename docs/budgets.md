@@ -52,18 +52,31 @@ Typing prices by hand goes stale, so a command can read them from a public sourc
 **proposes and reports, and never changes your config or a running gateway**; the gateway itself
 never fetches prices (prices come from the config file only).
 
-```sh
-# Print the price entries the source proposes for the endpoints of one provider:
-humpyard prices import --config config.toml --source models-dev:opencode-go --provider opencode
+Name the source on each provider in the config (`price_source` is read only by this command):
 
-# Report drift: a price that changed, an endpoint with no price, a model the source no longer lists.
-humpyard prices check  --config config.toml --source models-dev:opencode-go --provider opencode
-humpyard prices check  ... --json
+```toml
+[providers.opencode]
+base_url = "https://opencode.ai/zen/go/v1"
+api_key_env = "OPENCODE_API_KEY"
+price_source = "models-dev:opencode-go"
 ```
 
-`--source` is `models-dev:<provider id>`, using the open [models.dev](https://models.dev) dataset
-(for example `opencode-go`, `openrouter`, `groq`); `--provider` is the provider's name in your
-config. Models are matched by exact id. `check` exits **0** when everything matches, **1** on drift
+```sh
+# Print the price entries the sources propose, for every provider that sets price_source:
+humpyard prices import --config config.toml
+
+# Report drift: a price that changed, an endpoint with no price, a model the source no longer lists.
+humpyard prices check  --config config.toml
+humpyard prices check  --config config.toml --json
+
+# One provider, or a source that is not in the config (needs --provider):
+humpyard prices check  --config config.toml --provider opencode --source models-dev:opencode-go
+```
+
+A source is `models-dev:<provider id>`, using the open [models.dev](https://models.dev) dataset (for
+example `opencode-go`, `openrouter`, `groq`). Models are matched by exact id; a provider with no
+`price_source` is skipped. The JSON report has a top-level `drift` flag and a `reports` list, one per
+provider, each with its `provider`, `source` and per-endpoint `status`. `check` exits **0** when everything matches, **1** on drift
 and **2** when the source or config could not be used, so a scheduled job can alert on it. Review a
 proposal, then copy the entries into your config as you would any other change.
 

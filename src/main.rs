@@ -38,12 +38,14 @@ struct PriceArgs {
     /// The config file whose endpoints are priced.
     #[arg(short, long)]
     config: PathBuf,
-    /// Where prices come from: `models-dev:<provider id>`, for example `models-dev:opencode-go`.
+    /// Which provider of the config to check (its name in `[providers.<name>]`). Without it, every
+    /// provider that sets `price_source` is checked.
     #[arg(short, long)]
-    source: String,
-    /// Which provider of the config the source describes (its name in `[providers.<name>]`).
+    provider: Option<String>,
+    /// Where prices come from, `models-dev:<provider id>`, overriding the provider's
+    /// `price_source`. Needs `--provider`.
     #[arg(short, long)]
-    provider: String,
+    source: Option<String>,
     /// Override the source URL (testing); https only, or http to a loopback host.
     #[arg(long, hide = true, default_value = prices::MODELS_DEV_URL)]
     url: String,
@@ -67,21 +69,67 @@ enum PricesCommand {
 /// Exit code for a source or config that could not be used (distinct from drift).
 const EXIT_UNUSABLE: u8 = 2;
 
-async fn load_prices(args: &PriceArgs) -> Result<(Vec<prices::Row>, String), prices::PriceError> {
-    let provider_id = prices::parse_source(&args.source)?;
+/// The (provider, source) pairs to compare: what the flags name, or every provider of the config
+/// that sets a `price_source`.
+fn price_plan(
+    args: &PriceArgs,
+    config: &Config,
+) -> Result<Vec<(String, String)>, prices::PriceError> {
+    let fail = |message: String| Err(prices::PriceError::Config(message));
+    match (&args.provider, &args.source) {
+        (None, Some(_)) => fail("--source needs --provider".into()),
+        (Some(provider), source) => {
+            let Some(configured) = config.providers.get(provider) else {
+                return fail(format!("the config has no provider `{provider}`"));
+            };
+            match source.as_ref().or(configured.price_source.as_ref()) {
+                Some(source) => Ok(vec![(provider.clone(), source.clone())]),
+                None => fail(format!(
+                    "provider `{provider}` has no `price_source`; set one in the config or pass --source"
+                )),
+            }
+        }
+        (None, None) => {
+            let plan: Vec<_> = config
+                .providers
+                .iter()
+                .filter_map(|(name, p)| Some((name.clone(), p.price_source.clone()?)))
+                .collect();
+            if plan.is_empty() {
+                return fail(
+                    "no provider sets `price_source`; set one in the config, or pass --provider and --source"
+                        .into(),
+                );
+            }
+            Ok(plan)
+        }
+    }
+}
+
+async fn load_prices(args: &PriceArgs) -> Result<Vec<prices::Report>, prices::PriceError> {
     // Keys are not needed to compare prices: any value satisfies the env lookup.
     let text = std::fs::read_to_string(&args.config)
         .map_err(|e| prices::PriceError::Config(format!("{}: {e}", args.config.display())))?;
     let config = Config::from_toml(&text, |_| Some("unused".into()))
         .map_err(|e| prices::PriceError::Config(e.to_string()))?;
-    if !config.providers.contains_key(&args.provider) {
-        return Err(prices::PriceError::Config(format!(
-            "the config has no provider `{}`",
-            args.provider
-        )));
-    }
-    let data = prices::parse_models_dev(&prices::fetch(&args.url).await?, provider_id)?;
-    Ok((prices::compare(&config, &args.provider, &data), data.source))
+    let plan = price_plan(args, &config)?;
+    // Validate every source before fetching anything, then fetch the document once.
+    let ids = plan
+        .iter()
+        .map(|(_, spec)| prices::parse_source(spec))
+        .collect::<Result<Vec<_>, _>>()?;
+    let body = prices::fetch(&args.url).await?;
+    plan.iter()
+        .zip(ids)
+        .map(|((provider, _), id)| {
+            let data = prices::parse_models_dev(&body, id)?;
+            Ok(prices::Report {
+                provider: provider.clone(),
+                rows: prices::compare(&config, provider, &data),
+                source: data.source,
+            })
+        })
+        .collect()
 }
 
 async fn prices_command(command: PricesCommand) -> ExitCode {
@@ -90,23 +138,33 @@ async fn prices_command(command: PricesCommand) -> ExitCode {
         PricesCommand::Check { args, json } => (args, json, true),
     };
     let read_on = time::OffsetDateTime::now_utc().date().to_string();
-    let (rows, source) = match load_prices(&args).await {
-        Ok(loaded) => loaded,
+    let reports = match load_prices(&args).await {
+        Ok(reports) => reports,
         Err(error) => {
             eprintln!("error: {error}");
             return ExitCode::from(EXIT_UNUSABLE);
         }
     };
     if !check {
-        print!("{}", prices::render_snippet(&rows, &source, &read_on));
+        for report in &reports {
+            print!(
+                "{}",
+                prices::render_snippet(&report.rows, &report.source, &read_on)
+            );
+        }
         return ExitCode::SUCCESS;
     }
     if json {
-        println!("{}", prices::render_json(&rows, &source, &read_on));
+        println!("{}", prices::render_json(&reports, &read_on));
     } else {
-        print!("{}", prices::render_report(&rows, &source, &read_on));
+        for report in &reports {
+            print!(
+                "{}",
+                prices::render_report(&report.rows, &report.source, &read_on)
+            );
+        }
     }
-    if prices::has_drift(&rows) {
+    if reports.iter().any(|r| prices::has_drift(&r.rows)) {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS

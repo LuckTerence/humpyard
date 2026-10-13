@@ -9,7 +9,7 @@
 
 ## 2. Config
 
-- [ ] 2.1 Provider `price_source` and validation; unknown source is a config error
+- [x] 2.1 Provider `price_source` and validation; unknown source is a config error
 - [x] 2.2 `price.tiers` in the schema and validation (ordered thresholds, non-negative); highest rate used by policy and budgets
 - [x] 2.3 Metering applies the tier by prompt tokens; tests on both sides of a threshold
 

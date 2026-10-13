@@ -15,7 +15,7 @@ pub use schema::{
     ClassifierMode, ClassifyTrigger, Endpoint, FallbackClass, FallbackOn, OverBudget, PickerMode,
     Price, PriceTier, Rates, RouteSpec, SelectorSpec, TokenRange, When,
 };
-pub use validate::CREDENTIAL_HEADERS;
+pub use validate::{CREDENTIAL_HEADERS, parse_price_source};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -100,6 +100,8 @@ pub struct Provider {
     pub timeout_secs: u64,
     pub max_retries: u32,
     pub headers: BTreeMap<String, String>,
+    /// A price source for `humpyard prices` (for example `models-dev:opencode-go`), if any.
+    pub price_source: Option<String>,
 }
 
 impl std::fmt::Debug for Provider {
@@ -110,6 +112,7 @@ impl std::fmt::Debug for Provider {
             .field("timeout_secs", &self.timeout_secs)
             .field("max_retries", &self.max_retries)
             .field("header_names", &self.headers.keys().collect::<Vec<_>>())
+            .field("price_source", &self.price_source)
             .finish()
     }
 }
@@ -158,6 +161,7 @@ impl Config {
                     timeout_secs: p.timeout_secs,
                     max_retries: p.max_retries,
                     headers: p.headers,
+                    price_source: p.price_source,
                 },
             );
         }

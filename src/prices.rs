@@ -151,14 +151,22 @@ pub fn parse_models_dev(body: &str, provider_id: &str) -> Result<SourceData, Pri
     Ok(data)
 }
 
-/// Splits `models-dev:opencode-go` into its source kind and provider id.
+/// The models.dev provider id in a source such as `models-dev:opencode-go`.
 pub fn parse_source(spec: &str) -> Result<&str, PriceError> {
-    match spec.split_once(':') {
-        Some(("models-dev", id)) if !id.is_empty() => Ok(id),
+    match crate::config::parse_price_source(spec) {
+        Some(("models-dev", id)) => Ok(id),
         _ => Err(PriceError::Config(format!(
             "unknown price source `{spec}`; the available source is `models-dev:<provider id>`"
         ))),
     }
+}
+
+/// One provider's comparison with its source.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Report {
+    pub provider: String,
+    pub source: String,
+    pub rows: Vec<Row>,
 }
 
 /// Accepts https, and http only to a loopback host (so tests can serve a fixture).
@@ -448,8 +456,8 @@ pub fn render_report(rows: &[Row], source: &str, read_on: &str) -> String {
     out
 }
 
-/// The drift report as JSON, for scheduled jobs.
-pub fn render_json(rows: &[Row], source: &str, read_on: &str) -> Value {
+/// One report as JSON.
+pub fn report_json(rows: &[Row], source: &str, read_on: &str) -> Value {
     let price = |p: Option<&Price>| {
         p.map(|p| {
             json!({
@@ -489,5 +497,19 @@ pub fn render_json(rows: &[Row], source: &str, read_on: &str) -> Value {
                 "notes": s.notes,
             })),
         })).collect::<Vec<_>>(),
+    })
+}
+
+/// Several reports as one JSON document, for scheduled jobs: `drift` is true when any report has
+/// drift; each report names its provider and source.
+pub fn render_json(reports: &[Report], read_on: &str) -> Value {
+    json!({
+        "read_on": read_on,
+        "drift": reports.iter().any(|r| has_drift(&r.rows)),
+        "reports": reports.iter().map(|r| {
+            let mut report = report_json(&r.rows, &r.source, read_on);
+            report["provider"] = json!(r.provider);
+            report
+        }).collect::<Vec<_>>(),
     })
 }
