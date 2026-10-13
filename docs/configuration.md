@@ -32,6 +32,10 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
 - Auto routing (one `auto` model, pool chosen by intent): a tested recipe in
   [examples/auto-routing.toml](examples.md) and
   [Routing](routing.md#auto-routing-recipe).
+- `quota_source = "opencode-go"` on a provider (optional), with `quota_poll_secs` (top level,
+  default 60, 1 to 3600) and `quota_stale_secs` (default 300, at least the poll interval): the
+  gateway reads that provider's published usage windows while serving; see
+  [Provider quota](routing.md#provider-quota).
 - `decision_retention_days` (top level, default 90): how long routing decisions are kept; see
   [Keys, budgets and the ledger](budgets.md#the-decision-log).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,

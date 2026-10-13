@@ -52,6 +52,7 @@ const TOKEN_COUNT_HEADER: &str = "x-humpyard-token-count";
 /// Response headers naming the route that served a request and the selector rule that chose it.
 mod decisions;
 mod explain;
+mod quota;
 mod stats;
 
 const ROUTE_HEADER: &str = "x-humpyard-route";
@@ -81,6 +82,8 @@ pub struct AppState {
     accounting: Arc<Accounting>,
     tracker: Option<Arc<BudgetTracker>>,
     clock: Arc<dyn Clock>,
+    /// The latest provider quota snapshots (kept across reloads).
+    quota: Arc<crate::quota::QuotaStore>,
     /// The embedder's policy; it is composed with the budget policy of every snapshot.
     extra_policy: Arc<dyn RoutingPolicy>,
     /// The outcome of the latest reload attempt.
@@ -431,7 +434,8 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         hard_stop,
         accounting: accounting.clone(),
         tracker,
-        clock,
+        clock: clock.clone(),
+        quota: Arc::new(crate::quota::QuotaStore::default()),
         extra_policy,
         reload: Mutex::new(ReloadStatus::default()),
         reloading: tokio::sync::Mutex::new(()),
@@ -444,6 +448,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/route/explain", post(explain::explain_route))
         .route("/v1/decisions", get(decisions::list_decisions))
         .route("/v1/stats", get(stats::get_stats))
+        .route("/v1/quota", get(quota::get_quota))
         .route(
             "/v1/messages/count_tokens",
             post(|s, h, b| count_tokens(s, WireFormat::AnthropicMessages, h, b)),
@@ -465,6 +470,13 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
             post(|s, h, b| infer(s, WireFormat::AnthropicMessages, h, b)),
         )
         .with_state(state.clone());
+    // Quota polling reads the live configuration each cycle and ends by itself once the server is
+    // dropped (it holds only a weak reference).
+    let weak = Arc::downgrade(&state);
+    tokio::spawn(crate::quota::run(state.quota.clone(), clock, move || {
+        weak.upgrade()
+            .map(|state| crate::quota::plan(&state.snapshot().config))
+    }));
     Ok(Built {
         router: app,
         state,

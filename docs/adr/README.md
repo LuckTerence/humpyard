@@ -28,7 +28,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0012](0012-config-snapshot-reloaded-on-sighup.md) | The configuration is an atomically swapped snapshot, reloaded on SIGHUP |
 | [0013](0013-decisions-recorded-per-request.md) | Routing decisions are recorded per request in the ledger database |
 | [0014](0014-prices-are-proposed-never-fetched-at-runtime.md) | Prices are proposed by a CLI and never fetched at runtime (proposed) |
-| [0015](0015-provider-quota-is-polled-advisory-and-fails-open.md) | Provider quota is polled at runtime, advisory, and fails open (proposed) |
+| [0015](0015-provider-quota-is-polled-advisory-and-fails-open.md) | Provider quota is polled at runtime, advisory, and fails open |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.

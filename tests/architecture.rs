@@ -70,6 +70,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("pricing", module(Engine, &["config", "num"])),
         // Reads price sources for the `prices` command only; see the serving-path test below.
         ("prices", module(Core, &["config"])),
+        // Polls provider usage while serving; advisory and fail-open (ADR 0015).
+        ("quota", module(Core, &["clock", "config"])),
         (
             "pool",
             module(Engine, &["clock", "config", "error", "health"]),

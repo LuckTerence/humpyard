@@ -199,6 +199,36 @@ often each rule fires and what each pool costs and how long it takes: tune the t
 
 Responses carry `x-humpyard-target` (who served) and `x-humpyard-provider` (which endpoint).
 
+## Provider quota
+
+Capped plans (for example OpenCode Go: a monthly fee with usage limits in a 5-hour, a weekly and a
+monthly window) fail at a limit the gateway cannot otherwise see until the provider answers 429.
+A provider can name a **quota source**, and the gateway then reads its usage windows while serving:
+
+```toml
+quota_poll_secs = 60          # how often (default 60)
+quota_stale_secs = 300        # older than this counts as unknown (default 300)
+
+[providers.opencode]
+base_url = "https://opencode.ai/zen/go/v1"
+api_key_env = "OPENCODE_API_KEY"
+quota_source = "opencode-go"
+```
+
+`GET /v1/quota` shows the latest snapshot per provider: each window's percent used, the provider's
+status text, when it resets, and how old the data is. Things to know:
+
+- **It is account-level.** OpenCode's usage endpoint reports one set of windows for the whole
+  account; it does not say which model is near its own cap. Treat it as "how hot is this provider".
+- **Advisory, and it fails open.** Reading it never delays a request: it runs off the request path
+  with a timeout, and if the provider is slow, down or answers nonsense the snapshot goes stale.
+  Stale, missing or never-polled data is **unknown**, with the reason shown.
+- **The key is only sent to the provider's own host**, over https (the config is rejected for a plain
+  http provider URL, except to a loopback host), and never appears in logs or responses.
+- **Reloads keep the snapshot** while the provider's URL and source are unchanged.
+- **Nothing routes on it yet.** This step only observes. Selector rules that match on quota come
+  after the percentages have been compared with measured cost (`add-quota-routing`).
+
 ## Target classes
 
 A target can carry a **class** label, conventionally `private` (your own hardware), `public` (free

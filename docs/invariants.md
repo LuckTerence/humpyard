@@ -17,6 +17,10 @@ in an ADR (`docs/adr/`) in the same change.
    the test until it is given a layer.
 3. **SQL stays in the ledger.** Only `src/ledger.rs` uses `sqlx`. *Enforced by* `tests/architecture.rs`.
 4. **Only `main` prints.** Everything else logs through `tracing`. *Enforced by* `tests/architecture.rs`.
+4b. **Quota never affects a request.** Provider usage is polled off the request path with a timeout;
+    a slow, failing or malformed source only makes the snapshot stale, and stale or missing quota is
+    reported as unknown, never guessed. The provider key goes only to that provider's own origin over
+    https and is never logged or exposed (ADR 0015). *Enforced by* `tests/quota.rs`.
 4a. **Serving never fetches prices.** Only `main` (the `humpyard prices` command) may use the
     `prices` module that reads price sources; prices reach the gateway through the config file only
     (ADR 0014). *Enforced by* `tests/architecture.rs`.

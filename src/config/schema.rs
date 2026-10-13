@@ -20,6 +20,12 @@ pub(super) struct RawConfig {
     /// Days to keep routing decisions in the ledger database (0 = forever).
     #[serde(default = "default_decision_retention_days")]
     pub(super) decision_retention_days: u64,
+    /// How often to read each provider's quota source, in seconds.
+    #[serde(default = "default_quota_poll_secs")]
+    pub(super) quota_poll_secs: u64,
+    /// How old a quota snapshot may be before it counts as unknown, in seconds.
+    #[serde(default = "default_quota_stale_secs")]
+    pub(super) quota_stale_secs: u64,
     pub(super) providers: BTreeMap<String, RawProvider>,
     pub(super) targets: BTreeMap<String, RawTarget>,
     #[serde(default)]
@@ -138,6 +144,9 @@ pub(super) struct RawProvider {
     /// Where `humpyard prices` reads this provider's prices, for example `models-dev:opencode-go`.
     /// Only that command uses it; serving never fetches prices.
     pub(super) price_source: Option<String>,
+    /// Where the gateway reads this provider's usage windows while serving, for example
+    /// `opencode-go`. It is polled with the provider's own key, only at the provider's own host.
+    pub(super) quota_source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +156,14 @@ pub(super) struct RawTarget {
     /// What kind of pool this is, for reporting: conventionally `private`, `public` or `paid`.
     /// A fallback between targets of different classes is flagged on decisions and in `explain`.
     pub(super) class: Option<String>,
+}
+
+fn default_quota_poll_secs() -> u64 {
+    60
+}
+
+fn default_quota_stale_secs() -> u64 {
+    300
 }
 
 fn default_decision_retention_days() -> u64 {

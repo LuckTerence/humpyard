@@ -37,7 +37,7 @@ Last updated: 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-i
 | Packaging: tag-only release workflow (native runners), GHCR image, launchd service; releases published since 0.1.0 | Implemented | `add-packaging` (ADR 0010) |
 | Database-managed keys + a versioned, documented admin API (separate admin credential) | Planned (designed for in `add-cost-tracking`) | not yet proposed |
 | Price import and drift check: `humpyard prices import/check` from public sources (models.dev first), tiered prices, never applied or fetched at runtime (ADR 0014) | Core implemented: `prices import`/`check` against models.dev; tiered prices implemented (cost by prompt size, highest tier for policy); `price_source` in config implemented; the scheduled check still to do | `add-price-import` |
-| Quota-aware routing: poll a provider's published usage windows (OpenCode Go first), expose them, and let selector rules match on them; advisory, fails open, measured before use (ADR 0015) | Proposed | `add-quota-routing` |
+| Quota-aware routing: poll a provider's published usage windows (OpenCode Go first), expose them, and let selector rules match on them; advisory, fails open, measured before use (ADR 0015) | Snapshot, poller and `GET /v1/quota` implemented; selector condition after measuring | `add-quota-routing` |
 | `/metrics` endpoint (Prometheus format) | Planned | not yet proposed |
 | Read-only status page served by the binary (endpoint health, spend, recent requests) | Planned | not yet proposed |
 | Full admin GUI (key and budget management, spend charts) | Later; not ruled out | not yet proposed |

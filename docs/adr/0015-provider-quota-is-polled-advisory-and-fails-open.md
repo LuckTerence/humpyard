@@ -1,6 +1,6 @@
 # 0015. Provider quota is polled at runtime, advisory, and fails open
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-13
 - Supersedes: none
 - Change: [add-quota-routing](../../openspec/changes/add-quota-routing)
