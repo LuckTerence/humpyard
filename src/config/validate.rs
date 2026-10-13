@@ -66,6 +66,13 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
     }
     for (name, provider) in &raw.providers {
         validate_headers(name, &provider.headers)?;
+        if let Some(spec) = &provider.price_source
+            && parse_price_source(spec).is_none()
+        {
+            return Err(invalid(format!(
+                "providers.{name}.price_source: `{spec}` is not a known price source; the available source is `models-dev:<provider id>`"
+            )));
+        }
     }
     validate_budgets(raw)?;
     validate_health(raw)?;
@@ -310,6 +317,16 @@ pub(super) fn validate_budgets(raw: &RawConfig) -> Result<(), ConfigError> {
         }
     }
     Ok(())
+}
+
+/// The kinds of price source `humpyard prices` can read.
+const PRICE_SOURCE_KINDS: [&str; 1] = ["models-dev"];
+
+/// Splits a price source such as `models-dev:opencode-go` into its kind and the source's own
+/// provider id; `None` when the kind is unknown or the id is empty.
+pub fn parse_price_source(spec: &str) -> Option<(&str, &str)> {
+    spec.split_once(':')
+        .filter(|(kind, id)| PRICE_SOURCE_KINDS.contains(kind) && !id.is_empty())
 }
 
 /// Headers must be valid HTTP and must not carry credentials: keys come from `api_key_env`.

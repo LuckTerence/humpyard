@@ -135,6 +135,9 @@ pub(super) struct RawProvider {
     /// Extra HTTP headers sent on every call to this provider.
     #[serde(default)]
     pub(super) headers: BTreeMap<String, String>,
+    /// Where `humpyard prices` reads this provider's prices, for example `models-dev:opencode-go`.
+    /// Only that command uses it; serving never fetches prices.
+    pub(super) price_source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

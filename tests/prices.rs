@@ -201,7 +201,7 @@ fn reports_name_what_changed_and_what_was_read() {
     assert!(report.contains("source:     input = 3.0, output = 15.0, cached_input = 0.3"));
     assert!(report.contains("missing-at-source"));
     assert!(report.contains("5 endpoint(s) checked, 4 need attention"));
-    let json = prices::render_json(&rows, "models-dev:opencode-go", "2026-10-12");
+    let json = prices::report_json(&rows, "models-dev:opencode-go", "2026-10-12");
     assert_eq!(json["drift"], true);
     let gone = json["endpoints"]
         .as_array()
@@ -370,7 +370,9 @@ async fn check_exits_zero_without_drift_and_one_with_it() {
     assert_eq!(code, 1);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(parsed["drift"], true);
-    assert_eq!(parsed["endpoints"][1]["status"], "differs");
+    assert_eq!(parsed["reports"][0]["provider"], "opencode");
+    assert_eq!(parsed["reports"][0]["source"], "models-dev:opencode-go");
+    assert_eq!(parsed["reports"][0]["endpoints"][1]["status"], "differs");
 }
 
 #[tokio::test]
@@ -474,4 +476,190 @@ async fn unusable_sources_and_configs_exit_two_with_a_reason() {
         assert!(err.contains(expected), "{expected}: {err}");
         assert!(out.is_empty(), "no report on a failure: {out}");
     }
+}
+
+// ---- price_source in the config ----
+
+const TWO_PROVIDERS: &str = r#"listen = "127.0.0.1:0"
+[providers.opencode]
+base_url = "http://x"
+api_key_env = "HUMPYARD_TEST_NO_SUCH_KEY"
+price_source = "models-dev:opencode-go"
+[providers.other]
+base_url = "http://y"
+api_key_env = "HUMPYARD_TEST_NO_SUCH_KEY"
+price_source = "models-dev:other-provider"
+[providers.manual]
+base_url = "http://z"
+api_key_env = "HUMPYARD_TEST_NO_SUCH_KEY"
+[targets.a]
+endpoints = [{ provider = "opencode", model = "glm-5.3-flash", price = { input = 0.15, output = 0.5, cached_input = 0.03 } }]
+[targets.b]
+endpoints = [{ provider = "other", model = "glm-5.3-flash", price = { input = 9.0, output = 9.0 } }]
+[targets.c]
+endpoints = [{ provider = "manual", model = "whatever", price = { input = 1.0, output = 1.0 } }]
+"#;
+
+fn provider_with(source_line: &str) -> Result<Config, String> {
+    Config::from_toml(
+        &format!(
+            "listen = \"127.0.0.1:0\"\n[providers.p]\nbase_url = \"http://x\"\napi_key_env = \"K\"\n{source_line}\n[targets.t]\nendpoints = [{{ provider = \"p\", model = \"m\" }}]\n"
+        ),
+        |_| Some("k".into()),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_provider_may_name_its_price_source_and_a_bad_one_is_a_config_error() {
+    let ok = provider_with("price_source = \"models-dev:opencode-go\"").unwrap();
+    assert_eq!(
+        ok.providers["p"].price_source.as_deref(),
+        Some("models-dev:opencode-go")
+    );
+    assert_eq!(provider_with("").unwrap().providers["p"].price_source, None);
+    for bad in ["nope:x", "models-dev:", "models-dev", ""] {
+        let message = provider_with(&format!("price_source = \"{bad}\"")).unwrap_err();
+        assert!(
+            message.contains("providers.p.price_source"),
+            "{bad}: {message}"
+        );
+        assert!(
+            message.contains("models-dev:<provider id>"),
+            "{bad}: {message}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn check_without_flags_covers_every_provider_that_names_a_source() {
+    let c = cli().await;
+    let path = c.dir.path().join("config.toml");
+    std::fs::write(&path, TWO_PROVIDERS).unwrap();
+    let p = path.to_str().unwrap();
+    // `opencode` and `other` both match their sources; `manual` names none and is not checked.
+    let (code, out, err) = c.run(&["check", "--config", p, "--url", &c.url]).await;
+    assert_eq!(code, 0, "{out}{err}");
+    assert!(out.contains("models-dev:opencode-go") && out.contains("models-dev:other-provider"));
+    assert!(
+        !out.contains("whatever"),
+        "a provider with no source is not checked: {out}"
+    );
+
+    // Now make only `other` drift.
+    std::fs::write(&path, TWO_PROVIDERS.replace("output = 9.0", "output = 8.0")).unwrap();
+    let (code, out, _) = c
+        .run(&["check", "--config", p, "--url", &c.url, "--json"])
+        .await;
+    assert_eq!(code, 1, "drift in any provider is drift: {out}");
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(parsed["drift"], true);
+    let reports = parsed["reports"].as_array().unwrap();
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["provider"], "opencode");
+    assert_eq!(reports[0]["drift"], false);
+    assert_eq!(reports[1]["provider"], "other");
+    assert_eq!(reports[1]["drift"], true);
+}
+
+#[tokio::test]
+async fn flags_override_the_config_and_a_provider_can_be_picked() {
+    let c = cli().await;
+    let path = c.dir.path().join("config.toml");
+    std::fs::write(&path, TWO_PROVIDERS).unwrap();
+    let p = path.to_str().unwrap();
+    // Only `opencode`, checked against the other source's prices: glm-5.3-flash is 9/9 there.
+    let (code, out, _) = c
+        .run(&[
+            "check",
+            "--config",
+            p,
+            "--url",
+            &c.url,
+            "--provider",
+            "opencode",
+            "--source",
+            "models-dev:other-provider",
+        ])
+        .await;
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("models-dev:other-provider") && !out.contains("models-dev:opencode-go"));
+    // A provider without a source of its own can be checked when one is given.
+    let (code, out, _) = c
+        .run(&[
+            "check",
+            "--config",
+            p,
+            "--url",
+            &c.url,
+            "--provider",
+            "manual",
+            "--source",
+            "models-dev:opencode-go",
+        ])
+        .await;
+    assert_eq!(code, 1, "{out}");
+    assert!(out.contains("missing-at-source"));
+}
+
+#[tokio::test]
+async fn unclear_selections_exit_two_with_a_reason() {
+    let c = cli().await;
+    let with_sources = c.dir.path().join("with.toml");
+    std::fs::write(&with_sources, TWO_PROVIDERS).unwrap();
+    let without = c.write_config(GOOD);
+    let run = |args: Vec<String>| {
+        let c = &c;
+        async move {
+            c.run(&args.iter().map(String::as_str).collect::<Vec<_>>())
+                .await
+        }
+    };
+    let base = |path: &std::path::Path| {
+        vec![
+            "check".to_string(),
+            "--config".into(),
+            path.display().to_string(),
+            "--url".into(),
+            c.url.clone(),
+        ]
+    };
+    let mut args = base(&without);
+    let (code, _, err) = run(args.clone()).await;
+    assert_eq!(code, 2);
+    assert!(err.contains("no provider sets `price_source`"), "{err}");
+    args.extend(["--provider".into(), "opencode".into()]);
+    let (code, _, err) = run(args).await;
+    assert_eq!(code, 2);
+    assert!(err.contains("has no `price_source`"), "{err}");
+    let mut args = base(&with_sources);
+    args.extend(["--source".into(), "models-dev:opencode-go".into()]);
+    let (code, _, err) = run(args).await;
+    assert_eq!(code, 2);
+    assert!(err.contains("--source needs --provider"), "{err}");
+    let mut args = base(&with_sources);
+    args.extend(["--provider".into(), "ghost".into()]);
+    let (code, _, err) = run(args).await;
+    assert_eq!(code, 2);
+    assert!(err.contains("no provider `ghost`"), "{err}");
+}
+
+#[tokio::test]
+async fn import_without_flags_proposes_for_every_source_provider() {
+    let c = cli().await;
+    let path = c.dir.path().join("config.toml");
+    std::fs::write(&path, TWO_PROVIDERS).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let (code, out, _) = c
+        .run(&[
+            "import",
+            "--config",
+            path.to_str().unwrap(),
+            "--url",
+            &c.url,
+        ])
+        .await;
+    assert_eq!(code, 0);
+    assert!(out.contains("models-dev:opencode-go") && out.contains("models-dev:other-provider"));
+    assert_eq!(std::fs::read(&path).unwrap(), before);
 }
