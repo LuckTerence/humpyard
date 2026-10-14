@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.6.0. Unreleased on `main`: quota history.
+Last updated: 2026-10-14. Latest release: 0.7.0.
 
 ## Shipped
 
@@ -16,7 +16,7 @@ Last updated: 2026-10-14. Latest release: 0.6.0. Unreleased on `main`: quota his
 | 0.4.0 | 2026-10-10 | Routing statistics: `GET /v1/stats` (failure mix, latency percentiles, cost per request) |
 | 0.5.0 | 2026-10-12 | Price import and drift check (`humpyard prices import` and `check`, models.dev first); tiered prices; visible cross-class fallback; the docs site; the auto-routing recipe |
 | 0.6.0 | 2026-10-13 | `price_source` in config, so one command checks every provider; provider quota: a poller and `GET /v1/quota` (OpenCode Go first) |
-| unreleased | | Quota history: samples kept in the ledger and `GET /v1/quota/history`, with the cost of the calls between samples |
+| 0.7.0 | 2026-10-14 | Quota history: samples kept in the ledger (schema v3, upgraded in place) and `GET /v1/quota/history`, with the cost of the calls between samples; the roadmap page |
 
 ## Building now
 
