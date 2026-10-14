@@ -4,9 +4,9 @@ name: docs-site
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "site/**", "mkdocs.yml", "examples/**", ".github/workflows/docs-site.yml"]
+    paths: ["docs/**", "site/**", "mkdocs.yml", "overrides/**", "examples/**", ".github/workflows/docs-site.yml"]
   pull_request:
-    paths: ["docs/**", "site/**", "mkdocs.yml", "examples/**", ".github/workflows/docs-site.yml"]
+    paths: ["docs/**", "site/**", "mkdocs.yml", "overrides/**", "examples/**", ".github/workflows/docs-site.yml"]
   workflow_dispatch:
 permissions:
   contents: read

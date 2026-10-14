@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/humpyard-badge-512.png" alt="humpyard" width="128" height="128">
+
 # humpyard
 
 **A gateway that sorts each LLM request onto the right model.**

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 100 400 312" width="400" height="312"><title>humpyard</title><path d="M84,256 L214,256" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/><path d="M214,256 C280,256 298,128 356,128 L396,128" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/>
+<circle cx="424" cy="128" r="15" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+<path d="M214,256 C280,256 298,192 356,192 L396,192" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/>
+<circle cx="424" cy="192" r="15" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+<path d="M214,256 C280,256 298,256 356,256 L396,256" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/>
+<circle cx="424" cy="256" r="15" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+<path d="M214,256 C280,256 298,320 356,320 L396,320" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/>
+<circle cx="424" cy="320" r="15" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+<path d="M214,256 C280,256 298,384 356,384 L396,384" fill="none" stroke="#7dd3fc" stroke-width="13" stroke-linecap="round"/>
+<circle cx="424" cy="384" r="15" fill="#0f172a" stroke="#7dd3fc" stroke-width="8"/>
+<circle cx="214" cy="256" r="30" fill="none" stroke="#f59e0b" stroke-width="4" opacity=".5"/><circle cx="214" cy="256" r="19" fill="#f59e0b"/></svg>

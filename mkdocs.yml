@@ -10,6 +10,9 @@ docs_dir: build/docs
 
 theme:
   name: material
+  custom_dir: overrides       # link-preview meta tags (overrides/main.html)
+  logo: assets/humpyard-mark.svg
+  favicon: assets/favicon.svg
 
   palette:
     - media: "(prefers-color-scheme: dark)"
@@ -83,6 +86,7 @@ nav:
       - Migrating from LiteLLM: migrating-from-litellm.md
       - Example configs: examples.md
   - Design:
+      - Roadmap: roadmap.md
       - Architecture: architecture.md
       - Invariants: invariants.md
       - Background: background.md
