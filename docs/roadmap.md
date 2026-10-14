@@ -46,7 +46,15 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
 
 ## Later, and only on a measured trigger
 
-- **Cost-aware ordering** inside the set a route allows, advisory first, after weeks of statistics.
+- **Quality signals** in the statistics, so cost is never judged without how well a model answered.
+  In stages: first free, objective signals (truncated or empty output, refusals, malformed tool
+  calls, a retry in the same session); then a sampled, opt-in judge that runs off the request path
+  on a target no more public than the request, stores only a score and a reason code (never content),
+  and shows counts and spread in `/v1/stats`; calibrated against a stronger judge before it is trusted.
+  Requests are grouped by task class (matching rule, tools, size), not by their text.
+- **Cost-aware ordering** inside the set a route allows, advisory first, after weeks of statistics
+  and with quality signals in them; it needs exploration, so a model that scored badly once still
+  gets looked at again.
 - **A classifier-backed rule action**, if the decision log shows the catch-all route is too coarse.
 - **Quota per model**, if a provider publishes it; adapters for other providers' usage endpoints.
 - **A fuller admin GUI**, as an optional separate client of the admin API.
