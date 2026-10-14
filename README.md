@@ -62,6 +62,7 @@ or `cargo build --release`, then `humpyard serve --config config.toml`. A starti
 | call the API and its endpoints | [API and endpoints](https://humpyard.dev/api/) |
 | move from LiteLLM | [Migrating from LiteLLM](https://humpyard.dev/migrating-from-litellm/) |
 | understand the design and why | [Architecture](https://humpyard.dev/architecture/) · [Decision records](https://humpyard.dev/adr/) |
+| see what has shipped and what is next | [Roadmap](https://humpyard.dev/roadmap/) |
 
 ## Contributing
 
