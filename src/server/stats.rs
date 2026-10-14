@@ -63,7 +63,7 @@ pub(super) async fn get_stats(
 }
 
 /// `30s`, `15m`, `24h` or `7d` as milliseconds.
-fn parse_window(text: &str) -> Result<i64, String> {
+pub(super) fn parse_window(text: &str) -> Result<i64, String> {
     let bad = || format!("`window` must look like 30m, 24h or 7d, not `{text}`");
     let (digits, unit) = text.split_at(text.len().saturating_sub(1));
     let n: i64 = digits.parse().map_err(|_| bad())?;

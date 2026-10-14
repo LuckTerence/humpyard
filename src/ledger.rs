@@ -2,6 +2,7 @@
 //! path never waits on the database.
 
 mod decisions;
+mod quota;
 mod stats;
 
 use std::collections::HashMap;
@@ -20,9 +21,10 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 pub use decisions::{Attempt, Decision, DecisionQuery};
+pub use quota::{QuotaPoint, QuotaQuery, QuotaSample};
 pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, percentile};
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 /// How often the writer deletes decisions past their retention.
 const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 /// Decision retention when none is given, in days.
@@ -106,6 +108,8 @@ pub enum LedgerError {
 enum Message {
     Entry(Box<Entry>),
     Decision(Box<Decision>),
+    /// One poll's quota windows.
+    Quota(Vec<QuotaSample>),
     /// Written once everything received before it has been stored.
     Flush(oneshot::Sender<()>),
 }
@@ -162,21 +166,26 @@ impl Ledger {
             while rx.recv_many(&mut messages, BATCH).await > 0 {
                 let mut entries = Vec::with_capacity(messages.len());
                 let mut decided = Vec::new();
+                let mut quota_rows = Vec::new();
                 for message in messages.drain(..) {
                     match message {
                         Message::Entry(entry) => entries.push(*entry),
                         Message::Decision(decision) => decided.push(*decision),
+                        Message::Quota(rows) => quota_rows.extend(rows),
                         Message::Flush(done) => {
                             write(&writer_pool, &writer_failed, &entries).await;
                             write_decisions(&writer_pool, &writer_failed, &decided).await;
+                            write_quota(&writer_pool, &writer_failed, &quota_rows).await;
                             entries.clear();
                             decided.clear();
+                            quota_rows.clear();
                             let _ = done.send(());
                         }
                     }
                 }
                 write(&writer_pool, &writer_failed, &entries).await;
                 write_decisions(&writer_pool, &writer_failed, &decided).await;
+                write_quota(&writer_pool, &writer_failed, &quota_rows).await;
                 if retention_days > 0 && last_prune.is_none_or(|t| t.elapsed() >= PRUNE_EVERY) {
                     last_prune = Some(std::time::Instant::now());
                     prune_decisions(&writer_pool, retention_days).await;
@@ -210,6 +219,22 @@ impl Ledger {
             self.dropped.fetch_add(1, Ordering::Relaxed);
             tracing::error!("ledger queue full or closed; decision dropped");
         }
+    }
+
+    /// Queues one poll's quota windows. Never waits, like [`Ledger::record`].
+    pub fn record_quota(&self, samples: Vec<QuotaSample>) {
+        if samples.is_empty() {
+            return;
+        }
+        if self.tx.try_send(Message::Quota(samples)).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+            tracing::error!("ledger queue full or closed; quota samples dropped");
+        }
+    }
+
+    /// Quota samples matching `query`, oldest first.
+    pub async fn quota_history(&self, query: &QuotaQuery) -> Result<Vec<QuotaPoint>, LedgerError> {
+        Ok(quota::history(&self.pool, query).await?)
     }
 
     /// Decisions matching `query`, newest first.
@@ -343,6 +368,20 @@ async fn write_decisions(pool: &SqlitePool, failed: &AtomicU64, batch: &[Decisio
     }
 }
 
+/// Writes quota samples; like `write`, failures are counted and logged only.
+async fn write_quota(pool: &SqlitePool, failed: &AtomicU64, batch: &[QuotaSample]) {
+    if batch.is_empty() {
+        return;
+    }
+    if let Err(error) = quota::insert_batch(pool, batch).await {
+        failed.fetch_add(
+            u64::try_from(batch.len()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
+        tracing::error!(%error, samples = batch.len(), "ledger write failed; quota samples lost");
+    }
+}
+
 async fn prune_decisions(pool: &SqlitePool, retention_days: u64) {
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -354,6 +393,12 @@ async fn prune_decisions(pool: &SqlitePool, retention_days: u64) {
         Ok(0) => {}
         Ok(removed) => tracing::info!(removed, "pruned decisions past their retention"),
         Err(error) => tracing::warn!(%error, "could not prune decisions"),
+    }
+    // Quota samples follow the decision retention.
+    match quota::prune(pool, now_ms.saturating_sub(window_ms)).await {
+        Ok(0) => {}
+        Ok(removed) => tracing::info!(removed, "pruned quota samples past their retention"),
+        Err(error) => tracing::warn!(%error, "could not prune quota samples"),
     }
 }
 
@@ -405,6 +450,12 @@ async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .execute(pool)
             .await?;
         decisions::migrate_v2(pool).await?;
+    }
+    if version < 3 {
+        // v3: provider quota samples.
+        quota::migrate_v3(pool).await?;
+    }
+    if version < SCHEMA_VERSION {
         // PRAGMA does not take bound parameters; the value is a compile-time constant.
         sqlx::query(sqlx::AssertSqlSafe(format!(
             "PRAGMA user_version = {SCHEMA_VERSION}"

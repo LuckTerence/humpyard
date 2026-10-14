@@ -36,8 +36,8 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   default 60, 1 to 3600) and `quota_stale_secs` (default 300, at least the poll interval): the
   gateway reads that provider's published usage windows while serving; see
   [Provider quota](routing.md#provider-quota).
-- `decision_retention_days` (top level, default 90): how long routing decisions are kept; see
-  [Keys, budgets and the ledger](budgets.md#the-decision-log).
+- `decision_retention_days` (top level, default 90): how long routing decisions and provider quota
+  samples are kept; see [Keys, budgets and the ledger](budgets.md#the-decision-log).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,
   `max_cooldown_secs`); `GET /v1/health` shows which endpoints are being skipped.
 

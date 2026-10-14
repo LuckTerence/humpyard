@@ -449,6 +449,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/decisions", get(decisions::list_decisions))
         .route("/v1/stats", get(stats::get_stats))
         .route("/v1/quota", get(quota::get_quota))
+        .route("/v1/quota/history", get(quota::get_history))
         .route(
             "/v1/messages/count_tokens",
             post(|s, h, b| count_tokens(s, WireFormat::AnthropicMessages, h, b)),
@@ -470,19 +471,47 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
             post(|s, h, b| infer(s, WireFormat::AnthropicMessages, h, b)),
         )
         .with_state(state.clone());
-    // Quota polling reads the live configuration each cycle and ends by itself once the server is
-    // dropped (it holds only a weak reference).
-    let weak = Arc::downgrade(&state);
-    tokio::spawn(crate::quota::run(state.quota.clone(), clock, move || {
-        weak.upgrade()
-            .map(|state| crate::quota::plan(&state.snapshot().config))
-    }));
+    spawn_quota_poller(&state, clock);
     Ok(Built {
         router: app,
         state,
         accounting,
         hard_stop: hard_stop_tx,
     })
+}
+
+/// Quota polling reads the live configuration each cycle and ends by itself once the server is
+/// dropped (it holds only weak references). Polls worth keeping go to the ledger as history.
+fn spawn_quota_poller(state: &Arc<AppState>, clock: Arc<dyn Clock>) {
+    let live = Arc::downgrade(state);
+    let history = Arc::downgrade(state);
+    tokio::spawn(crate::quota::run(
+        state.quota.clone(),
+        clock,
+        move || {
+            live.upgrade()
+                .map(|state| crate::quota::plan(&state.snapshot().config))
+        },
+        move |provider, windows, now_ms| {
+            if let Some(state) = history.upgrade()
+                && let Some(ledger) = state.accounting.ledger()
+            {
+                ledger.record_quota(
+                    windows
+                        .iter()
+                        .map(|w| crate::ledger::QuotaSample {
+                            ts_ms: now_ms,
+                            provider: provider.to_string(),
+                            window: w.name.clone(),
+                            percent: w.percent,
+                            status: w.status.clone(),
+                            resets_at: w.resets_at.clone(),
+                        })
+                        .collect(),
+                );
+            }
+        },
+    ));
 }
 
 async fn list_models(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {

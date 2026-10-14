@@ -10,6 +10,7 @@
 
 ## 2. Measure
 
+- [x] 2.0 Record quota samples in the ledger (schema v3) and expose `GET /v1/quota/history`: a sample is stored when a window's percent, status or reset changes, and at least every 15 minutes; each sample carries the provider's notional cost since the previous one, from the usage rows; kept for `decision_retention_days`; tests (schema upgrade, sampling rule, history query, auth, no ledger)
 - [ ] 2.1 Run it against the real account for several days; compare percent deltas with ledger cost; record what the percent is a percent of, the `status` values seen, and the behavior at a cap (decision input for step 3)
 
 ## 3. Use it in rules (after step 2)
