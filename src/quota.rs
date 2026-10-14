@@ -24,6 +24,9 @@ const POLL_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_BODY_BYTES: usize = 64 * 1024;
 /// The windows the adapters report, in display order.
 pub const WINDOWS: [&str; 3] = ["rolling", "weekly", "monthly"];
+/// A window that has not changed is still sampled this often, so a flat stretch is visible as
+/// "still there" and not as a gap.
+pub const SAMPLE_EVERY_MS: i64 = 15 * 60 * 1000;
 /// Text fields from a source are kept short: they are shown to operators, never interpreted.
 const MAX_TEXT: usize = 64;
 
@@ -191,6 +194,28 @@ impl QuotaStore {
     }
 }
 
+/// Decides which polls are worth keeping as history: one whose windows differ from the last kept
+/// sample, or any poll once [`SAMPLE_EVERY_MS`] has passed since the last one kept. Pure, so the
+/// rule is tested without a clock or a database.
+#[derive(Default)]
+pub struct Sampler {
+    last: HashMap<String, (Vec<Window>, i64)>,
+}
+
+impl Sampler {
+    /// Whether this poll should be stored; remembers it if so.
+    pub fn due(&mut self, provider: &str, windows: &[Window], now_ms: i64) -> bool {
+        let keep = self.last.get(provider).is_none_or(|(kept, at)| {
+            kept.as_slice() != windows || now_ms.saturating_sub(*at) >= SAMPLE_EVERY_MS
+        });
+        if keep {
+            self.last
+                .insert(provider.to_string(), (windows.to_vec(), now_ms));
+        }
+        keep
+    }
+}
+
 /// Identifies the data a provider's quota snapshot came from.
 pub fn identity(source: &str, base_url: &str) -> String {
     format!("{source}|{}", poll_url(source, base_url))
@@ -288,10 +313,14 @@ async fn fetch(client: &reqwest::Client, target: &PollTarget) -> Result<Vec<Wind
 /// Polls every quota-sourced provider of the current configuration, forever, until `current`
 /// returns `None` (the server is gone). Each cycle reads the live plan, so a reload that adds,
 /// removes or changes a source takes effect without restarting anything.
+///
+/// `keep` receives each poll worth keeping as history (see [`Sampler`]): the provider, its
+/// windows and the time. It must not block.
 pub async fn run(
     store: Arc<QuotaStore>,
     clock: Arc<dyn Clock>,
     current: impl Fn() -> Option<Plan> + Send + 'static,
+    keep: impl Fn(&str, &[Window], i64) + Send + 'static,
 ) {
     let Ok(client) = reqwest::Client::builder()
         .timeout(POLL_TIMEOUT)
@@ -303,6 +332,7 @@ pub async fn run(
     };
     // Whether each provider's last poll failed, to log only when that changes.
     let mut failing: HashMap<String, bool> = HashMap::new();
+    let mut sampler = Sampler::default();
     loop {
         let Some(plan) = current() else { return };
         let results = join_all(plan.targets.iter().map(|t| {
@@ -315,6 +345,9 @@ pub async fn run(
             let was_failing = failing.get(&target.provider).copied().unwrap_or(false);
             match result {
                 Ok(windows) => {
+                    if sampler.due(&target.provider, &windows, now) {
+                        keep(&target.provider, &windows, now);
+                    }
                     store.record_ok(&target.provider, &target.identity, windows, now);
                     if was_failing {
                         tracing::info!(provider = %target.provider, "quota polling recovered");

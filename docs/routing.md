@@ -226,6 +226,12 @@ status text, when it resets, and how old the data is. Things to know:
 - **The key is only sent to the provider's own host**, over https (the config is rejected for a plain
   http provider URL, except to a loopback host), and never appears in logs or responses.
 - **Reloads keep the snapshot** while the provider's URL and source are unchanged.
+- **History is kept** (when a ledger is configured) so a percent can be compared with measured cost:
+  a poll is stored whenever a window's percent, status or reset time changes, and at least every 15
+  minutes, for `decision_retention_days`. `GET /v1/quota/history` returns the samples, each with the
+  notional cost of the provider's calls since the previous sample of the same window. Because the
+  percent is account-wide, it can move with traffic that did not come through the gateway; compare
+  trends, not single steps.
 - **Nothing routes on it yet.** This step only observes. Selector rules that match on quota come
   after the percentages have been compared with measured cost (`add-quota-routing`).
 

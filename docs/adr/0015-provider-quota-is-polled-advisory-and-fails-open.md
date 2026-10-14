@@ -32,3 +32,12 @@ The serving process makes one more kind of outbound request, so it needs a timeo
 credentials and a failure that is invisible to requests; tests keep that true. Operators can write
 pacing rules and see exactly why they matched. Rules built on the account-level percent shed load
 from a whole provider, not from one model.
+
+## Addendum: history (step 2)
+
+To judge what the percent measures, each poll that differs from the last stored one (and at least
+one every 15 minutes) is written to the ledger as one sample per window, and
+`GET /v1/quota/history` reads them back with the cost of the provider's calls between samples.
+Samples hold numbers and short status text only, follow `decision_retention_days`, and need no new
+configuration. Polling and routing are otherwise unchanged: the history is for people, and nothing
+acts on it.
