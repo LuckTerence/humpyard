@@ -15,9 +15,14 @@ what it decided and why.
 
 ### [📖 Read the documentation at humpyard.dev](https://humpyard.dev)
 
+### [💬 Join the humpyard Discord](https://discord.gg/qfTGr7KTfq)
+
+Ask a question, share your setup, tell us what to build next.
+
 </div>
 
 > **Status: pre-alpha.** It runs real traffic (Claude Code, Codex, OpenClaw) but expect rough edges.
+> Early users shape what comes next: tell us what you run it with on [Discord](https://discord.gg/qfTGr7KTfq).
 
 *Why the name:* a hump yard is the railroad yard where cars are classified and sent down the right
 track, one by one. That is the job here, with requests and models.

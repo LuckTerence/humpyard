@@ -5,6 +5,9 @@ OpenAI Chat, OpenAI Responses and Anthropic Messages, routes with
 [NVIDIA NeMo Switchyard](https://github.com/NVIDIA/nemo-switchyard) algorithms, fails over across
 providers, and keeps virtual keys, budgets and a usage ledger in SQLite.
 
+> **Using it, or thinking about it?** Come say hello on [Discord](https://discord.gg/qfTGr7KTfq): ask a question, share your
+> setup, tell us what to build next.
+
 *Why the name:* a hump yard is the railroad yard where cars are classified and sent down the right
 track, one by one. That is the job here, with requests and models.
 
