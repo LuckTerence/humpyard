@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or feedback
+    url: https://discord.gg/qfTGr7KTfq
+    about: Ask on Discord, or share how you run it. Bugs and feature requests belong here as issues.
+  - name: Security vulnerability
+    url: https://github.com/gschaetz/humpyard/security/advisories/new
+    about: Report privately. Please do not open a public issue.

@@ -1,0 +1,37 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Never paste API keys, virtual keys or full configs.** Redact provider
+        URLs and key hashes if they identify you.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `humpyard --version`, and how you run it (binary, container, launchd).
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest config and request that shows it. Redact secrets.
+      render: toml
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the gateway recorded
+      description: |
+        The `x-humpyard-request-id` of an affected response and the matching entry from
+        `GET /v1/decisions`, or the output of `POST /v1/route/explain` for the same request. Logs
+        (`RUST_LOG=info`) help too.
+      render: json
