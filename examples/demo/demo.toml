@@ -1,0 +1,74 @@
+# The demo gateway: the auto-routing rules from ../auto-routing.toml, pointed at the local mock
+# provider and with realistic prices (USD per million tokens), so costs are comparable.
+# run.sh fills in the two placeholders below; nothing here is secret.
+
+listen = "127.0.0.1:8090"
+
+[ledger]
+path = "__LEDGER__"
+
+[keys.tour]                          # scenes 1 and 2, kept apart from the comparison
+sha256 = "__TOUR_HASH__"
+[keys.before]                        # the same traffic, everything sent to one big model
+sha256 = "__BEFORE_HASH__"
+[keys.after]                         # the same traffic, routed by humpyard
+sha256 = "__AFTER_HASH__"
+
+[providers.local]
+base_url = "http://127.0.0.1:9100/local/v1"
+api_key_env = "DEMO_KEY"
+[providers.free]
+base_url = "http://127.0.0.1:9100/free/v1"
+api_key_env = "DEMO_KEY"
+[providers.paid]
+base_url = "http://127.0.0.1:9100/paid/v1"
+api_key_env = "DEMO_KEY"
+
+[targets.local-model]
+class = "private"
+endpoints = [{ provider = "local", model = "local-coder", price = { input = 0.0, output = 0.0 } }]
+[targets.free-fast]
+class = "public"
+endpoints = [{ provider = "free", model = "fast-small", price = { input = 0.0, output = 0.0 } }]
+[targets.paid-fast]
+class = "paid"
+endpoints = [{ provider = "paid", model = "fast-small", price = { input = 0.15, output = 0.60 } }]
+[targets.paid-capable]
+class = "paid"
+endpoints = [{ provider = "paid", model = "capable-large", price = { input = 3.0, output = 15.0 } }]
+[targets.paid-long]
+class = "paid"
+endpoints = [{ provider = "paid", model = "long-context", price = { input = 1.25, output = 10.0 } }]
+
+[routes.cheap]
+type = "passthrough"
+targets = ["free-fast", "paid-fast"]
+[routes.capable]
+type = "passthrough"
+targets = ["paid-capable"]
+[routes.long-context]
+type = "passthrough"
+targets = ["paid-long"]
+[routes.private-pool]
+type = "passthrough"
+targets = ["local-model"]
+[routes.auto]
+type = "passthrough"
+targets = ["free-fast", "paid-fast"]
+
+[[select]]
+name = "private-profile"
+when = { model = "auto", profile = "private" }
+route = "private-pool"
+[[select]]
+name = "long-prompt"
+when = { model = "auto", prompt_tokens = { min = 30000 } }
+route = "long-context"
+[[select]]
+name = "tool-turns"
+when = { model = "auto", tools = true }
+route = "capable"
+[[select]]
+name = "everyday"
+when = { model = "auto" }
+route = "cheap"

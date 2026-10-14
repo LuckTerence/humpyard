@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.7.0. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.7.0. Unreleased on `main`: the no-key demo. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -16,6 +16,7 @@ Last updated: 2026-10-14. Latest release: 0.7.0. Community: [Discord](https://di
 | 0.4.0 | 2026-10-10 | Routing statistics: `GET /v1/stats` (failure mix, latency percentiles, cost per request) |
 | 0.5.0 | 2026-10-12 | Price import and drift check (`humpyard prices import` and `check`, models.dev first); tiered prices; visible cross-class fallback; the docs site; the auto-routing recipe |
 | 0.6.0 | 2026-10-13 | `price_source` in config, so one command checks every provider; provider quota: a poller and `GET /v1/quota` (OpenCode Go first) |
+| unreleased | | [Try it in a minute](demo.md): a no-key demo (mock provider, real gateway) that routes by request type, explains a decision and compares cost; the humpyard badge, favicon and link previews |
 | 0.7.0 | 2026-10-14 | Quota history: samples kept in the ledger (schema v3, upgraded in place) and `GET /v1/quota/history`, with the cost of the calls between samples; the roadmap page |
 
 ## Building now
@@ -31,7 +32,7 @@ Last updated: 2026-10-14. Latest release: 0.7.0. Community: [Discord](https://di
 | 1 | Rules that match on quota (`when.quota`), shown in `explain` and recorded on decisions, plus a pacing recipe | the measurement above | `add-quota-routing` step 3 |
 | 2 | Strict fallback: a route lists the classes it may fall through to, and is refused instead of crossing | cross-class visibility (shipped) | `add-auto-routing` 2.2 |
 | 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool | nothing | `add-auto-routing` 3.1 |
-| 4 | A demo: a real Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` | prices in a real deployment | `add-auto-routing` 5.2 |
+| 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
 
 ## Planned: the operator surface
 

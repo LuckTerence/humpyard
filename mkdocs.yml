@@ -76,6 +76,7 @@ extra_css:
 nav:
   - Home: index.md
   - Using it:
+      - Try it in a minute: demo.md
       - Deployment: deployment.md
       - Configuration: configuration.md
       - Clients: clients.md
