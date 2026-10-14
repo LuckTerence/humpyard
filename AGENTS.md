@@ -18,7 +18,8 @@ keep the old `x-conductor-*` header names as history; living specs and code use 
   Tactical choices stay in `design.md`. Changes started before the schema keep their own schema.
 
 - Keep [docs/architecture.md](docs/architecture.md) current: any PR that changes structure, request
-  flow or component status updates its diagrams and status table, and its "Last updated" line.
+  flow or component status updates its diagrams and status table, and its "Last updated" line. Also update [docs/roadmap.md](docs/roadmap.md) (shipped,
+  building now, next) when an item moves.
 
 ## Guardrails (read before changing structure)
 - [docs/invariants.md](docs/invariants.md) lists the rules that must stay true and what enforces
