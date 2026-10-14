@@ -35,4 +35,5 @@ traffic** (Claude Code, Codex and the like), and it explains and measures what i
 | see what is done and what is next | [Roadmap](roadmap.md) |
 
 Source, issues and releases: [github.com/gschaetz/humpyard](https://github.com/gschaetz/humpyard).
+Questions and feedback: [Discord](https://discord.gg/qfTGr7KTfq). Please never paste API keys or full configs in chat.
 Apache-2.0.

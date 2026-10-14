@@ -11,6 +11,7 @@ what it decided and why.
 [![ci](https://github.com/gschaetz/humpyard/actions/workflows/ci.yml/badge.svg)](https://github.com/gschaetz/humpyard/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/gschaetz/humpyard?include_prereleases)](https://github.com/gschaetz/humpyard/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![discord](https://img.shields.io/badge/chat-Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/qfTGr7KTfq)
 
 ### [📖 Read the documentation at humpyard.dev](https://humpyard.dev)
 
@@ -63,6 +64,12 @@ or `cargo build --release`, then `humpyard serve --config config.toml`. A starti
 | move from LiteLLM | [Migrating from LiteLLM](https://humpyard.dev/migrating-from-litellm/) |
 | understand the design and why | [Architecture](https://humpyard.dev/architecture/) · [Decision records](https://humpyard.dev/adr/) |
 | see what has shipped and what is next | [Roadmap](https://humpyard.dev/roadmap/) |
+
+## Community
+
+Questions, feedback and show-and-tell are welcome on [Discord](https://discord.gg/qfTGr7KTfq). Bugs and feature
+requests belong in [GitHub issues](https://github.com/gschaetz/humpyard/issues), so they stay
+searchable. Please never paste API keys or full configs in chat.
 
 ## Contributing
 
