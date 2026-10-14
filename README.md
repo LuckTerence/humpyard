@@ -26,6 +26,10 @@ Ask a question, share your setup, tell us what to build next.
 > **Status: pre-alpha.** It runs real traffic (Claude Code, Codex, OpenClaw) but expect rough edges.
 > Early users shape what comes next: tell us what you run it with on [Discord](https://discord.gg/qfTGr7KTfq).
 
+<p align="center"><a href="https://humpyard.dev/demo/"><img src="docs/assets/demo.gif" alt="The humpyard demo: one model name, requests routed by what they are, and the cost compared" width="760"></a></p>
+
+<p align="center"><sub>No API keys needed: <a href="https://humpyard.dev/demo/">run the demo yourself</a>. It uses a mock provider; the routing, the ledger and the cost math are real.</sub></p>
+
 *Why the name:* a hump yard is the railroad yard where cars are classified and sent down the right
 track, one by one. That is the job here, with requests and models.
 

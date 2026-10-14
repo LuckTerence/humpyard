@@ -28,6 +28,7 @@ traffic** (Claude Code, Codex and the like), and it explains and measures what i
 
 | I want to... | Read |
 |---|---|
+| see it work in a minute, no keys | [Try it](demo.md) |
 | run it | [Deployment](deployment.md) |
 | point Claude Code, Codex or OpenClaw at it | [Clients](clients.md) |
 | route one `auto` model to the right pool | [Auto routing recipe](routing.md#auto-routing-recipe) |
