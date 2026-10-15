@@ -10,11 +10,11 @@
 - [ ] 2.3 Prove no request-path blocking: a concurrency test with a scraper running
 
 ## 3. Serve it
-- [ ] 3.1 Config: `[metrics] enabled`, `listen`, `bearer_sha256`, `key_labels`; validation (main listener requires the credential; the credential is not a virtual key)
-- [ ] 3.2 Route, auth and the separate listener; tests (disabled 404, client key 401, metrics credential cannot call inference, scrape works, hot reload keeps counters)
+- [ ] 3.1 Config: `[metrics] enabled`, `listen`, `bearer_sha256`, `key_labels`, `key_label_limit`; validation (the main listener requires the credential; a separate listener does not; the credential is not a virtual key)
+- [ ] 3.2 Route, auth and the separate listener; tests (disabled 404, not on the main port when `listen` is set, client key 401, metrics credential cannot call inference, scrape works, hot reload keeps counters, key labels on four counters only and capped)
 
 ## 4. Docs
-- [ ] 4.1 `docs/metrics.md` (metric list, label rules, scrape config, example alert rules and a Grafana-importable dashboard JSON); update configuration, api, architecture (status table, "Last updated") and the roadmap; ADR 0016 accepted
+- [ ] 4.1 `docs/metrics.md` (metric list, label rules, recommended separate-listener setup with a ServiceMonitor and a NetworkPolicy example, example alert rules for error ratio, failover rate, ledger drops, a breaker open too long, stale quota and a rejected reload, and a Grafana-importable dashboard JSON); update configuration, api, architecture (status table, "Last updated") and the roadmap; ADR 0016 accepted
 
 ## 5. Later, separate proposals
 - [ ] 5.1 A read-only status page served by the binary, reading `Registry::snapshot()` through a JSON view (the audience that does not run Prometheus)

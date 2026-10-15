@@ -20,6 +20,13 @@ On the main listener, `/metrics` SHALL require the configured metrics credential
 - **WHEN** a request to `/v1/chat/completions` carries the metrics credential
 - **THEN** the response is 401
 
+### Requirement: A separate listener needs no credential
+When `[metrics] listen` is set, `/metrics` SHALL be served only on that address and SHALL NOT be served on the main listener.
+
+#### Scenario: Not on the public port
+- **WHEN** `listen` is set and `/metrics` is requested on the main listener
+- **THEN** the response is 404
+
 ### Requirement: Labels come only from configuration or fixed sets
 Every metric label value SHALL be a name from the loaded configuration or a member of a fixed set. A string supplied by a client (requested model, header, tag, prompt) SHALL NOT become a label value.
 
@@ -28,11 +35,22 @@ Every metric label value SHALL be a name from the loaded configuration or a memb
 - **THEN** the request is counted under `route="none"` and the requested name appears in no series
 
 ### Requirement: Metrics never carry identity or content
-By default no series SHALL carry a key id, key hash, tenant or request content. Key ids SHALL appear as a label only when `key_labels = true`.
+By default no series SHALL carry a key id, key hash, tenant or request content. With `key_labels = true`, a `key` label (the configured key id) SHALL appear on `requests_total`, `tokens_total`, `cost_micro_usd_total` and `refusals_total` only, never on a histogram, and never with a hash or secret.
 
 #### Scenario: Key labels are off
 - **WHEN** a keyed request completes
 - **THEN** no exposed series contains the key id
+
+#### Scenario: Key labels are on
+- **WHEN** `key_labels = true` and a keyed request completes
+- **THEN** the four counters carry the key id and no histogram does
+
+### Requirement: Key labels are bounded
+The number of distinct `key` label values SHALL NOT exceed `key_label_limit`; keys past the limit SHALL be counted under `key="other"`.
+
+#### Scenario: Cap reached
+- **WHEN** more distinct keys than `key_label_limit` make requests
+- **THEN** the extra keys are summed under `key="other"` and the series count stays bounded
 
 ### Requirement: Exposition is valid and monotonic
 The output SHALL be valid Prometheus text format with HELP and TYPE lines, counters SHALL never decrease across scrapes within a process, and histogram buckets SHALL be cumulative.

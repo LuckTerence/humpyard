@@ -21,14 +21,22 @@ critical path and never carry content.
   from a fixed enum. The label sets are fixed per snapshot: on reload the registry keeps series for
   removed routes until restart (counters must not reset), but never adds a series from request data.
   A request that matches nothing is counted under `route="none"`, not under what the client asked for.
-- **No identity by default.** Keys are not a label. An operator may set `key_labels = true` to add a
-  `key` label with the configured key id (never a hash, never the secret). Off by default because a
-  scrape endpoint may be reachable by more people than the admin.
-- **Where it is served.** `[metrics] enabled = false` by default. With `listen` set, `/metrics` is
-  served only there (typical: a cluster-internal port behind a NetworkPolicy), with the credential
-  optional. Without `listen`, it is served on the main listener and a `bearer_sha256` is required,
-  or startup is refused. The credential is a hash in config like keys (ADR 0004) and is distinct from
-  every virtual key; it authorizes `GET /metrics` and nothing else.
+- **No identity by default; scoped when opted in.** Keys are not a label. An operator may set
+  `key_labels = true` to add a `key` label (the configured key id, never a hash or secret) to four
+  counters only: `requests_total`, `tokens_total`, `cost_micro_usd_total` and `refusals_total`. Never
+  to a histogram: buckets multiply with routes, targets and keys, and per-key latency is in the
+  ledger. Only keys defined in configuration can be labels, and the registry caps distinct key
+  labels (`key_label_limit`, default 100); a key past the cap is counted under `key="other"`, so a
+  future database-managed key set cannot make the label unbounded. Off by default because a scrape
+  endpoint may be reachable by more people than the admin.
+- **Where it is served.** `[metrics] enabled = false` by default. The recommended setup is a separate
+  listener (`listen`): `/metrics` is then unreachable from the public port and any ingress that
+  routes to it, by construction, and access is a network matter (a NetworkPolicy that admits only the
+  monitoring namespace; `docs/metrics.md` ships a ServiceMonitor and a NetworkPolicy example). No
+  credential is needed there. Without `listen`, `/metrics` is served on the main listener and a
+  `bearer_sha256` is required, or startup is refused, because an open `/metrics` on a public port
+  must not be possible by omission. The credential is a hash in config like keys (ADR 0004) and is
+  distinct from every virtual key; it authorizes `GET /metrics` and nothing else.
 - **Latency buckets.** Request duration (to first byte and to completion), seconds, buckets from 50 ms
   to 120 s, because model calls are slow. Token and cost counters are monotonic integers (tokens;
   micro-USD per ADR 0006), so Prometheus `rate()` works and no float money is exposed.
@@ -40,13 +48,13 @@ All names are prefixed `humpyard_`.
 
 | Metric | Type | Labels |
 |---|---|---|
-| `requests_total` | counter | `protocol`, `route`, `target`, `provider`, `status_class` |
+| `requests_total` | counter | `protocol`, `route`, `target`, `provider`, `status_class`, `key`\* |
 | `request_duration_seconds` | histogram | `route`, `target` |
 | `time_to_first_byte_seconds` | histogram | `route`, `target` |
-| `tokens_total` | counter | `route`, `target`, `direction` (`input`/`output`) |
-| `cost_micro_usd_total` | counter | `route`, `target` |
+| `tokens_total` | counter | `route`, `target`, `direction` (`input`/`output`), `key`\* |
+| `cost_micro_usd_total` | counter | `route`, `target`, `key`\* |
 | `failovers_total` | counter | `route`, `from_target`, `to_target` |
-| `refusals_total` | counter | `reason` (`auth`, `budget`, `policy`, `no_route`, `forbidden`) |
+| `refusals_total` | counter | `reason` (`auth`, `budget`, `policy`, `no_route`, `forbidden`), `key`\* |
 | `endpoint_state` | gauge | `provider`, `endpoint`, `state` (`closed`/`open`/`probe`) |
 | `ledger_queue_depth` | gauge | none |
 | `ledger_dropped_total`, `ledger_failed_total` | counter | none |
@@ -54,6 +62,11 @@ All names are prefixed `humpyard_`.
 | `config_generation` | gauge | none |
 | `quota_percent`, `quota_snapshot_age_seconds` | gauge | `provider`, `window` |
 | `build_info` | gauge (value 1) | `version` |
+
+\* only when `key_labels = true`.
+
+Names follow Prometheus conventions (`_total` for counters, `_seconds` for durations, base units).
+No label is a request id, a model name as sent, or any unbounded value.
 
 ## Risks / trade-offs
 

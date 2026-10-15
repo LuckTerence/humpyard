@@ -18,7 +18,7 @@ disagree with the first.
 Operational metrics live in one in-process registry owned by `src/metrics.rs`. Every operator-facing
 view reads that registry: the Prometheus text endpoint now, a JSON view for a status page later.
 Label values come only from the loaded configuration or from fixed sets; a client-supplied string
-never becomes a label. Identity (key ids) is off by default and opt-in. The endpoint has its own
+never becomes a label. Identity (configured key ids) is off by default and opt-in, only on a few counters and never on histograms, with a cap on distinct values. The endpoint has its own
 credential and is off by default. Counters are monotonic, money is integer micro-USD.
 
 Alternatives considered: the `prometheus` or `metrics` crates (a dependency on the serving path and a

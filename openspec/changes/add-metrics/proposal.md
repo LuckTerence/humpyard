@@ -20,9 +20,12 @@ be built so it needs no rework: **one registry, many views**.
 - **A bounded set of labels.** Only values the operator wrote in configuration (route, target,
   provider, rule, key id when opted in) and small fixed sets (protocol, status class, outcome). Never
   a client-controlled string (model name as sent, header values, prompt text, tags).
-- **Its own credential.** The endpoint is served either on a separate listener or on the main one
-  behind a dedicated metrics credential. A client key never reads it, and the metrics credential
-  never calls inference.
+- **A separate listener is the recommended setup.** Then `/metrics` is unreachable from the public
+  port and access is a network policy. On the main listener it requires a dedicated metrics
+  credential (startup is refused without one). A client key never reads it, and the metrics
+  credential never calls inference.
+- **Opt-in per-key series** on four counters (requests, tokens, cost, refusals), never on
+  histograms, from configured key ids only, with a cap on distinct keys.
 - **Out of scope:** the status page or any UI, a JSON view of the registry (the registry is shaped
   so one is a thin addition), traces, push gateways, alert rules and dashboards, per-request logs.
 
