@@ -23,6 +23,7 @@ Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
+| `/metrics` (Prometheus) on one metrics registry, so a status page for people without Prometheus is a thin view later | Operating the gateway needs live health numbers (rate, errors, failovers, latency, breaker state) beyond `/v1/health`; proposed, not started | `add-metrics` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -38,7 +39,7 @@ Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://di
 
 In this order, API first. See [Direction: operating humpyard](architecture.md#direction-operating-humpyard).
 
-1. A `/metrics` endpoint (Prometheus), so existing dashboards need no custom UI.
+1. A `/metrics` endpoint (Prometheus), so existing dashboards need no custom UI. Proposed in `add-metrics`; it is built on one registry so a read-only status page for people without Prometheus is a later, thin view.
 2. Health-driven target eligibility (tier substitution on a cold target).
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
 4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
