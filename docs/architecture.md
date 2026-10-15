@@ -40,7 +40,7 @@ Last updated: 2026-10-14 (quota history; roadmap page added). Earlier, 2026-10-1
 | Database-managed keys + a versioned, documented admin API (separate admin credential) | Planned (designed for in `add-cost-tracking`) | not yet proposed |
 | Price import and drift check: `humpyard prices import/check` from public sources (models.dev first), tiered prices, never applied or fetched at runtime (ADR 0014) | Core implemented: `prices import`/`check` against models.dev; tiered prices implemented (cost by prompt size, highest tier for policy); `price_source` in config implemented; the scheduled check still to do | `add-price-import` |
 | Quota-aware routing: poll a provider's published usage windows (OpenCode Go first), expose them, and let selector rules match on them; advisory, fails open, measured before use (ADR 0015) | Snapshot, poller, `GET /v1/quota` and stored history (`GET /v1/quota/history`) implemented; measuring now; selector condition after that | `add-quota-routing` |
-| `/metrics` endpoint (Prometheus format) | Planned | not yet proposed |
+| `/metrics` endpoint (Prometheus format) | Proposed | `add-metrics` |
 | Read-only status page served by the binary (endpoint health, spend, recent requests) | Planned | not yet proposed |
 | Full admin GUI (key and budget management, spend charts) | Later; not ruled out | not yet proposed |
 | `migrate-modelrelay` command + bundled catalog | Planned | not yet proposed |
