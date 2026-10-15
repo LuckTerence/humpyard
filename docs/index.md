@@ -2,7 +2,7 @@
 
 **A gateway that sorts each LLM request onto the right model.** One small Rust binary that speaks
 OpenAI Chat, OpenAI Responses and Anthropic Messages, routes with
-[NVIDIA NeMo Switchyard](https://github.com/NVIDIA/nemo-switchyard) algorithms, fails over across
+[NVIDIA NeMo Switchyard](https://github.com/NVIDIA-NeMo/Switchyard) algorithms, fails over across
 providers, and keeps virtual keys, budgets and a usage ledger in SQLite.
 
 > **Using it, or thinking about it?** Come say hello on [Discord](https://discord.gg/qfTGr7KTfq): ask a question, share your
