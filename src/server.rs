@@ -995,6 +995,7 @@ async fn handle(
         .to_string(),
     );
     guard.decision.skipped_rules.clone_from(&selection.skipped);
+    guard.decision.excluded_targets = excluded_targets(snap, &selection.name);
     let budget = check_budget(state, caller)?;
     guard.decision.budget = budget.map(|b| budget_label(b).to_string());
     let plan = plan_route(
@@ -1214,7 +1215,39 @@ fn check_budget(
     Ok(Some(status.state))
 }
 
-/// Stage 4: let the routing policy narrow the targets; nothing eligible is a refusal.
+/// Whether the route may use `target` given its `allowed_classes`. A route without the setting
+/// (the default) may use every target; a strict route only targets of a listed class (ADR 0017).
+fn class_allows(snap: &Snapshot, route: &str, target: &str) -> bool {
+    let Some(allowed) = snap
+        .config
+        .routes
+        .get(route)
+        .and_then(crate::config::RouteSpec::allowed_classes)
+    else {
+        return true;
+    };
+    snap.config
+        .target_classes
+        .get(target)
+        .is_some_and(|class| allowed.iter().any(|a| a == class))
+}
+
+/// The targets a strict route mentions but its class list excludes, in the order it mentions them.
+fn excluded_targets(snap: &Snapshot, route: &str) -> Vec<String> {
+    let Some(spec) = snap.config.routes.get(route) else {
+        return Vec::new();
+    };
+    let mut excluded: Vec<String> = Vec::new();
+    for target in spec.target_refs() {
+        if !class_allows(snap, route, target) && !excluded.iter().any(|e| e == target) {
+            excluded.push(target.to_string());
+        }
+    }
+    excluded
+}
+
+/// Stage 4: let the routing policy narrow the targets, and a strict route drop the targets of
+/// classes it does not allow, before the algorithm sees any of them; nothing eligible is a refusal.
 fn plan_route(
     snap: &Snapshot,
     route: &Route,
@@ -1233,7 +1266,9 @@ fn plan_route(
         }),
     };
     route
-        .plan(model, |target| snap.policy.is_eligible(&context, target))
+        .plan(model, |target| {
+            class_allows(snap, model, target) && snap.policy.is_eligible(&context, target)
+        })
         .ok_or_else(|| {
             if budget == Some(BudgetState::Exhausted) {
                 GatewayError::BudgetExceeded(format!(

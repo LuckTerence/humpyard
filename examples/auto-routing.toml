@@ -26,7 +26,7 @@ api_key_env = "PAID_KEY"
 
 # ---- pools: one target per kind of work ----
 [targets.local-model]
-class = "private"              # labels only report: see docs/routing.md ("Target classes")
+class = "private"              # a label; a route that sets allowed_classes enforces it ("Strict routes")
 endpoints = [{ provider = "local", model = "local-coder" }]
 [targets.free-fast]
 class = "public"
@@ -61,9 +61,11 @@ targets = ["paid-long"]
 type = "passthrough"
 targets = ["paid-vision"]
 
-[routes.private-pool]                # stays on your own hardware
+[routes.private-pool]                # stays on your own hardware, enforced: see "Strict routes" in docs/routing.md
 type = "passthrough"
 targets = ["local-model"]
+allowed_classes = ["private"]        # any target of another class is removed before routing, so a
+                                     # future edit that adds a public fallback here fails to load
 
 # `auto` is itself a safe route: it is where a request lands when every rule is skipped (a key may
 # not use any rule's route) or none matches.

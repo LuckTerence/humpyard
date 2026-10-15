@@ -101,6 +101,7 @@ fn to_json(d: &Decision) -> Value {
         "skipped_rules": d.skipped_rules,
         "budget": d.budget,
         "eligible_targets": d.eligible_targets,
+        "excluded_targets": d.excluded_targets,
         "request": {
             "stream": d.stream,
             "prompt_tokens_estimate": d.prompt_tokens,

@@ -246,7 +246,8 @@ class = "private"
 endpoints = [{ provider = "local", model = "local-coder" }]
 ```
 
-Classes **change nothing about routing**. They make a quiet failure visible: a `private` route that
+Classes **change nothing about routing by themselves**: a route is strict only if it sets
+`allowed_classes` ([Strict routes](#strict-routes)). They make a quiet failure visible: a `private` route that
 lists a public target after it will, when the private target fails, serve the request from the public
 one, and until now nothing said so. With labels:
 
@@ -258,8 +259,37 @@ one, and until now nothing said so. With labels:
   first class.
 
 `GET /v1/decisions?outcome=ok` plus a look at `fallback_crossed_classes` answers "how often did my
-private traffic end up somewhere public?". Whether to forbid crossing outright is a later,
-opt-in step (see `add-auto-routing`); today the labels only report.
+private traffic end up somewhere public?". To forbid crossing outright, make the route strict.
+
+### Strict routes
+
+A route can say which classes it may use at all:
+
+```toml
+[routes.coding-private]
+type = "passthrough"
+targets = ["local-coder", "paid-coder"]
+allowed_classes = ["private"]
+```
+
+Targets whose class is not listed, and targets with no class, are **removed from the route before the
+routing algorithm runs**, so no failure, retry or tier substitution can reach them: the public target
+in the example is never called, not even when the private one is down. The client gets the private
+target's error, and nothing is rewritten.
+
+- **Validated when the config loads.** A listed class must be a valid label; every target the route
+  mentions must have a class (an unclassed target on a strict route is an error, not a silent
+  exclusion); and at least one target must have an allowed class.
+- **Strictness only removes.** Health still never tries to deny service (a cooling-down allowed target
+  is tried as before), budgets narrow within the allowed set, and no selector rule or header adds a
+  target back. A route without `allowed_classes` behaves exactly as before.
+- **Visible.** `explain` shows the route's `allowed_classes`, the `excluded_targets` with the reason,
+  and `fallback_can_cross_classes: false`. Each decision lists its `excluded_targets`
+  (`GET /v1/decisions`), and `humpyard_fallback_blocked_total{route}` counts requests that failed on a
+  strict route that had excluded targets, which is the signal that a fallback you forbade would have
+  happened ([Metrics](metrics.md)).
+- **The cost is redundancy by design.** A strict route is only as available as its allowed targets, so
+  alert on the metric if that matters.
 
 ## Changing the configuration while running
 

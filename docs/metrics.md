@@ -46,6 +46,7 @@ cannot call inference or any other endpoint.
 | `humpyard_cost_micro_usd_total` | counter | `route`, `target`, `key`\* |
 | `humpyard_failovers_total` | counter | `route`, `from_target`, `to_target` |
 | `humpyard_refusals_total` | counter | `reason`, `key`\* |
+| `humpyard_fallback_blocked_total` | counter | `route` |
 | `humpyard_endpoint_state` | gauge | `target`, `provider`, `model`, `state` (1 for the current state) |
 | `humpyard_ledger_queue_depth` | gauge | none |
 | `humpyard_ledger_dropped_total`, `humpyard_ledger_failed_total` | counter | none |
@@ -64,6 +65,8 @@ Notes:
   response headers; it is recorded only for requests that reached routing, so refusals do not skew it.
 - **Cost** is at your configured prices, in millionths of a dollar, so `rate()` works and no float
   money is exposed. For spend you act on, use the ledger.
+- **Blocked fallbacks** counts requests that failed upstream on a [strict route](routing.md#strict-routes)
+  that had excluded targets: the fallback the route did not permit. It stays at 0 on routes that are not strict.
 - **A request that matched no route** is counted under `route="none"`.
 - **Refusal reasons** are `unauthorized`, `forbidden`, `budget_exhausted`, `no_eligible_target`,
   `unknown_model` and `bad_request`. Upstream failures show up in `status_class` and in failovers.

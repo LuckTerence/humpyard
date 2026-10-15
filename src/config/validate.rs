@@ -168,6 +168,7 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
             }
         }
         validate_route(id, route)?;
+        validate_strict(id, route, raw)?;
     }
     Ok(())
 }
@@ -181,19 +182,61 @@ pub const CREDENTIAL_HEADERS: [&str; 5] = [
     "proxy-authorization",
 ];
 
+/// A class label: 1 to 32 lowercase letters, digits, `-` or `_`.
+fn valid_class(class: &str) -> bool {
+    !class.is_empty()
+        && class.len() <= 32
+        && class
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
 pub(super) fn validate_classes(raw: &RawConfig) -> Result<(), ConfigError> {
     for (id, target) in &raw.targets {
         if let Some(class) = &target.class
-            && (class.is_empty()
-                || class.len() > 32
-                || !class
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_'))
+            && !valid_class(class)
         {
             return Err(invalid(format!(
                 "target `{id}`: class `{class}` must be 1 to 32 lowercase letters, digits, - or _ (for example private, public, paid)"
             )));
         }
+    }
+    Ok(())
+}
+
+/// A strict route (`allowed_classes`, ADR 0017) fails closed at load: every class is a valid
+/// label, every target it mentions has a class (an unclassed target would be excluded silently),
+/// and at least one target is allowed, so the route can serve.
+fn validate_strict(id: &str, route: &RouteSpec, raw: &RawConfig) -> Result<(), ConfigError> {
+    let Some(allowed) = route.allowed_classes() else {
+        return Ok(());
+    };
+    if allowed.is_empty() {
+        return Err(invalid(format!(
+            "route `{id}`: allowed_classes must list at least one class"
+        )));
+    }
+    if let Some(bad) = allowed.iter().find(|c| !valid_class(c)) {
+        return Err(invalid(format!(
+            "route `{id}`: allowed class `{bad}` must be 1 to 32 lowercase letters, digits, - or _"
+        )));
+    }
+    let mut any_allowed = false;
+    for name in route.target_refs() {
+        match raw.targets.get(name).and_then(|t| t.class.as_deref()) {
+            None => {
+                return Err(invalid(format!(
+                    "route `{id}` sets allowed_classes but target `{name}` has no class; give it one so the route cannot silently drop or use it"
+                )));
+            }
+            Some(class) => any_allowed |= allowed.iter().any(|a| a == class),
+        }
+    }
+    if !any_allowed {
+        return Err(invalid(format!(
+            "route `{id}`: none of its targets has an allowed class ({}), so it could never serve",
+            allowed.join(", ")
+        )));
     }
     Ok(())
 }
