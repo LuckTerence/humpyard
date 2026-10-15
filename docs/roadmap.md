@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -19,12 +19,12 @@ Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://di
 | 0.7.0 | 2026-10-14 | Quota history: samples kept in the ledger (schema v3, upgraded in place) and `GET /v1/quota/history`, with the cost of the calls between samples; the roadmap page |
 | 0.7.1 | 2026-10-14 | [Try it in a minute](demo.md): a no-key demo (mock provider, real gateway) that routes by request type, explains a decision and compares cost; the humpyard badge, favicon and link previews; `rustls` 0.23.46 (RUSTSEC-2026-0346) |
 | 0.8.0 | 2026-10-14 | `/metrics`: Prometheus metrics on one registry (a status page can read the same one later), off by default, on a separate listener or behind its own credential, labels only from configuration, opt-in per-key series; Grafana dashboard, alert rules, ServiceMonitor and NetworkPolicy examples (ADR 0016) |
+| 0.8.1 | 2026-10-15 | Strict routes: `allowed_classes` removes targets of other classes before routing, so a private route can never reach a public target (validated at load, recorded on decisions, `humpyard_fallback_blocked_total`, ADR 0017); a summary Grafana dashboard (totals over a time range) and a corrected Switchyard link |
 
 ## Building now
 
 | Item | Why now | Spec |
 |---|---|---|
-| Strict fallback: a route sets `allowed_classes`, and targets of other classes are removed before routing, so a private route can never reach a public target (built, in review for 0.8.1, ADR 0017) | A silent private-to-public fallback is the one privacy gap routing still has; visibility shipped in 0.6.0 | `add-auto-routing` 2.2 |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
