@@ -23,7 +23,7 @@ Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
-| `/metrics` (Prometheus) on one metrics registry, so a status page for people without Prometheus is a thin view later | Operating the gateway needs live health numbers (rate, errors, failovers, latency, breaker state) beyond `/v1/health`; proposed, not started | `add-metrics` |
+| `/metrics` (Prometheus) on one metrics registry, so a status page for people without Prometheus is a thin view later | Operating the gateway needs live health numbers (rate, errors, failovers, latency, breaker state) beyond `/v1/health`; built, in review for 0.8.0 | `add-metrics` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order

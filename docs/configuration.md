@@ -36,6 +36,9 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   default 60, 1 to 3600) and `quota_stale_secs` (default 300, at least the poll interval): the
   gateway reads that provider's published usage windows while serving; see
   [Provider quota](routing.md#provider-quota).
+- `[metrics]` (optional, off by default): the Prometheus `/metrics` endpoint. `enabled`, `listen` (a
+  separate address; recommended), `bearer_sha256` (the credential for serving it on the main
+  listener), `key_labels` and `key_label_limit`. See [Metrics and alerts](metrics.md).
 - `decision_retention_days` (top level, default 90): how long routing decisions and provider quota
   samples are kept; see [Keys, budgets and the ledger](budgets.md#the-decision-log).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,

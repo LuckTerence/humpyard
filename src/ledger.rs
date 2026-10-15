@@ -247,6 +247,11 @@ impl Ledger {
         stats::compute(&self.pool, query).await
     }
 
+    /// Messages queued for the writer and not yet taken by it.
+    pub fn queue_depth(&self) -> usize {
+        self.tx.max_capacity().saturating_sub(self.tx.capacity())
+    }
+
     pub fn dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
     }

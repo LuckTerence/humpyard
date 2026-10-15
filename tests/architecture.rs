@@ -72,6 +72,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("prices", module(Core, &["config"])),
         // Polls provider usage while serving; advisory and fail-open (ADR 0015).
         ("quota", module(Core, &["clock", "config"])),
+        // Operational metrics: one registry, bounded labels (ADR 0016).
+        ("metrics", module(Core, &["config", "ledger"])),
         (
             "pool",
             module(Engine, &["clock", "config", "error", "health"]),
@@ -82,7 +84,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
             module(
                 Engine,
                 &[
-                    "budget", "clock", "config", "error", "estimate", "ledger", "pool", "pricing",
+                    "budget", "clock", "config", "error", "estimate", "ledger", "metrics", "pool",
+                    "pricing",
                 ],
             ),
         ),

@@ -1,0 +1,56 @@
+# Prometheus alerting rules for humpyard. Load with `rule_files:`, or use prometheusrule.yaml
+# (the same rules for the Prometheus Operator). Thresholds are starting points: tune them.
+groups:
+  - name: humpyard
+    rules:
+      - alert: HumpyardHighErrorRatio
+        expr: |
+          sum(rate(humpyard_requests_total{status_class="5xx"}[5m]))
+            / sum(rate(humpyard_requests_total[5m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 5% of humpyard requests fail upstream"
+      - alert: HumpyardFailoverRateHigh
+        expr: |
+          sum(rate(humpyard_failovers_total[10m]))
+            / sum(rate(humpyard_requests_total[10m])) > 0.1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 10% of requests needed a failover; a provider may be degraded"
+      - alert: HumpyardEndpointCoolingDown
+        expr: humpyard_endpoint_state{state="cooling_down"} == 1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.provider }}/{{ $labels.model }} has been skipped for 15 minutes"
+      - alert: HumpyardLedgerDropping
+        expr: increase(humpyard_ledger_dropped_total[10m]) > 0 or increase(humpyard_ledger_failed_total[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "The ledger is losing entries; spend and budgets are undercounted"
+      - alert: HumpyardQuotaSnapshotStale
+        expr: humpyard_quota_snapshot_age_seconds > 600
+        for: 10m
+        labels: {severity: info}
+        annotations:
+          summary: "No fresh quota reading for {{ $labels.provider }}; quota rules treat it as unknown"
+      - alert: HumpyardQuotaHigh
+        expr: humpyard_quota_percent{window="weekly"} > 90
+        for: 5m
+        labels: {severity: info}
+        annotations:
+          summary: "{{ $labels.provider }} weekly quota is above 90%"
+      - alert: HumpyardConfigReloadRejected
+        expr: humpyard_config_last_reload_ok == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The last humpyard config reload was rejected; the previous config is still serving"
+      - alert: HumpyardDown
+        expr: absent(humpyard_build_info)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "humpyard is not being scraped"

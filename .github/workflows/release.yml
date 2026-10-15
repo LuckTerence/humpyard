@@ -104,6 +104,7 @@ jobs:
       PRERELEASE: ${{ needs.verify.outputs.prerelease }}
       IMAGE: ghcr.io/gschaetz/humpyard
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
         with:
           pattern: dist-*
@@ -127,4 +128,5 @@ jobs:
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" --repo "$GITHUB_REPOSITORY" \
             --title "humpyard $GITHUB_REF_NAME" --generate-notes \
-            humpyard-v*.tar.gz SHA256SUMS
+            humpyard-v*.tar.gz SHA256SUMS \
+            examples/metrics/grafana-dashboard.json examples/metrics/alert-rules.yaml

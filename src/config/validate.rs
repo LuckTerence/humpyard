@@ -2,19 +2,71 @@
 
 use std::collections::BTreeMap;
 
-use super::ConfigError;
-use super::schema::{RawConfig, RouteSpec};
+use std::net::SocketAddr;
+
+use super::schema::{RawConfig, RawKey, RawMetrics, RouteSpec};
+use super::{ConfigError, MetricsConfig};
 
 /// Parses `sha256:<64 hex>` (the prefix is optional).
 pub(super) fn parse_hash(id: &str, text: &str) -> Result<[u8; 32], ConfigError> {
+    parse_hash_at(&format!("keys.{id}.sha256"), text)
+}
+
+/// Like [`parse_hash`], naming the config field in the error.
+pub(super) fn parse_hash_at(field: &str, text: &str) -> Result<[u8; 32], ConfigError> {
     let hex_part = text.strip_prefix("sha256:").unwrap_or(text);
     let bytes = hex::decode(hex_part)
         .ok()
         .and_then(|b| <[u8; 32]>::try_from(b).ok());
     bytes.ok_or_else(|| {
         invalid(format!(
-            "keys.{id}.sha256 must be `sha256:` followed by 64 hex digits"
+            "{field} must be `sha256:` followed by 64 hex digits"
         ))
+    })
+}
+
+/// Checks the `[metrics]` block and parses its credential.
+pub(super) fn metrics(
+    raw: &RawMetrics,
+    main_listen: SocketAddr,
+    keys: &BTreeMap<String, RawKey>,
+) -> Result<MetricsConfig, ConfigError> {
+    if !(1..=1000).contains(&raw.key_label_limit) {
+        return Err(invalid("metrics.key_label_limit must be 1 to 1000"));
+    }
+    let credential = raw
+        .bearer_sha256
+        .as_deref()
+        .map(|text| parse_hash_at("metrics.bearer_sha256", text))
+        .transpose()?;
+    if raw.enabled {
+        if raw.listen == Some(main_listen) {
+            return Err(invalid(
+                "metrics.listen must differ from listen; leave it out to serve /metrics on the main listener",
+            ));
+        }
+        if raw.listen.is_none() && credential.is_none() {
+            return Err(invalid(
+                "metrics on the main listener need metrics.bearer_sha256 (a credential only /metrics accepts); \
+                 or set metrics.listen to a separate address",
+            ));
+        }
+    }
+    if let Some(hash) = credential {
+        for (id, key) in keys {
+            if parse_hash(id, &key.sha256)? == hash {
+                return Err(invalid(format!(
+                    "metrics.bearer_sha256 must not be the key `{id}`; the metrics credential is separate from every virtual key"
+                )));
+            }
+        }
+    }
+    Ok(MetricsConfig {
+        enabled: raw.enabled,
+        listen: raw.listen,
+        credential_sha256: credential,
+        key_labels: raw.key_labels,
+        key_label_limit: raw.key_label_limit,
     })
 }
 
