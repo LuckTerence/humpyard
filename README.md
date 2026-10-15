@@ -52,7 +52,7 @@ slow or expensive. humpyard is the **routing and policy layer** in front of your
 
 ```sh
 docker run -d -p 8080:8080 -e GROQ_API_KEY \
-  -v "$PWD/config.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.8.0
+  -v "$PWD/config.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.8.1
 curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
 ```
@@ -92,3 +92,7 @@ Locally: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `carg
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+humpyard is an independent project. It is built on [NVIDIA NeMo Switchyard](https://github.com/NVIDIA-NeMo/Switchyard)
+(Apache-2.0) and is not affiliated with or endorsed by NVIDIA. NVIDIA and NeMo are trademarks of
+NVIDIA Corporation.
