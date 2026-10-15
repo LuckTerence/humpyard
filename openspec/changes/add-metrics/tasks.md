@@ -14,6 +14,7 @@
 - [ ] 3.2 Route, auth and the separate listener; tests (disabled 404, not on the main port when `listen` is set, client key 401, metrics credential cannot call inference, scrape works, hot reload keeps counters, key labels on four counters only and capped)
 
 ## 4. Docs
+- [ ] 4.0 Ship examples as files under `examples/metrics/`, not in the binary: `grafana-dashboard.json` (request rate, error ratio, latency percentiles, failovers, spend by route and key, breaker state, ledger backlog, quota), `alert-rules.yaml` (PrometheusRule form and a plain rules file), `servicemonitor.yaml`, `networkpolicy.yaml`; attach the dashboard and rules to each release; a test that every `humpyard_*` name used in these files exists in the registry table, so they cannot drift from the code
 - [ ] 4.1 `docs/metrics.md` (metric list, label rules, recommended separate-listener setup with a ServiceMonitor and a NetworkPolicy example, example alert rules for error ratio, failover rate, ledger drops, a breaker open too long, stale quota and a rejected reload, and a Grafana-importable dashboard JSON); update configuration, api, architecture (status table, "Last updated") and the roadmap; ADR 0016 accepted
 
 ## 5. Later, separate proposals

@@ -42,6 +42,12 @@ critical path and never carry content.
   micro-USD per ADR 0006), so Prometheus `rate()` works and no float money is exposed.
 - **Pull only.** No push gateway, no OTLP. Scraping is the model; a later change can add exporters.
 
+- **Dashboards and alerts are examples, not features.** They ship as versioned files in
+  `examples/metrics/` and as release assets, never embedded in the binary: they change faster than the
+  gateway, belong to the operator's Grafana, and the binary must stay small. A test ties them to the
+  registry so a renamed metric breaks the build instead of a dashboard. The built-in status page
+  (later) is the answer for people with no Grafana, and it reads the same registry.
+
 ## Initial metric set
 
 All names are prefixed `humpyard_`.
