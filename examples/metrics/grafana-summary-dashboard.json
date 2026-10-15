@@ -1229,6 +1229,55 @@
           "range": false
         }
       ]
+    },
+    {
+      "id": 24,
+      "type": "bargauge",
+      "title": "Blocked fallbacks by route",
+      "description": "Requests that failed on a strict route that had excluded targets: a fallback the route did not permit.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "namePlacement": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (increase(humpyard_fallback_blocked_total[$__range]))",
+          "legendFormat": "{{route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ]
     }
   ]
 }

@@ -25,6 +25,11 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.provider }}/{{ $labels.model }} has been skipped for 15 minutes"
+      - alert: HumpyardStrictFallbackBlocked
+        expr: increase(humpyard_fallback_blocked_total[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Strict route {{ $labels.route }} failed and, by design, did not fall back to an excluded class"
       - alert: HumpyardLedgerDropping
         expr: increase(humpyard_ledger_dropped_total[10m]) > 0 or increase(humpyard_ledger_failed_total[10m]) > 0
         labels: {severity: critical}

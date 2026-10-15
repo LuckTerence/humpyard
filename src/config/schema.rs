@@ -474,6 +474,10 @@ pub enum RouteSpec {
         /// Failures that move on to the next target; all of them when absent.
         #[serde(default)]
         fallback_on: Option<Vec<FallbackClass>>,
+        /// Target classes this route may use at all; targets of any other class (and unclassed
+        /// targets) are removed before routing, so no failure can reach them (ADR 0017).
+        #[serde(default)]
+        allowed_classes: Option<Vec<String>>,
     },
     Random {
         targets: Vec<String>,
@@ -482,6 +486,10 @@ pub enum RouteSpec {
         /// Failures that move on to the next target; all of them when absent.
         #[serde(default)]
         fallback_on: Option<Vec<FallbackClass>>,
+        /// Target classes this route may use at all; targets of any other class (and unclassed
+        /// targets) are removed before routing, so no failure can reach them (ADR 0017).
+        #[serde(default)]
+        allowed_classes: Option<Vec<String>>,
     },
     StageRouter {
         efficient: Vec<String>,
@@ -489,6 +497,10 @@ pub enum RouteSpec {
         /// Failures that move on to the next target; all of them when absent.
         #[serde(default)]
         fallback_on: Option<Vec<FallbackClass>>,
+        /// Target classes this route may use at all; targets of any other class (and unclassed
+        /// targets) are removed before routing, so no failure can reach them (ADR 0017).
+        #[serde(default)]
+        allowed_classes: Option<Vec<String>>,
         #[serde(default = "default_picker_mode")]
         mode: PickerMode,
         #[serde(default = "default_confidence")]
@@ -502,6 +514,10 @@ pub enum RouteSpec {
         /// Failures that move on to the next target; all of them when absent.
         #[serde(default)]
         fallback_on: Option<Vec<FallbackClass>>,
+        /// Target classes this route may use at all; targets of any other class (and unclassed
+        /// targets) are removed before routing, so no failure can reach them (ADR 0017).
+        #[serde(default)]
+        allowed_classes: Option<Vec<String>>,
         /// Capability mode: lowest solve probability that routes a supported task to `efficient`.
         #[serde(default = "default_confidence")]
         base_threshold: f64,
@@ -534,8 +550,26 @@ impl RouteSpec {
         }
     }
 
+    /// The classes this route is restricted to, if it is strict (ADR 0017).
+    pub fn allowed_classes(&self) -> Option<&[String]> {
+        match self {
+            Self::Passthrough {
+                allowed_classes, ..
+            }
+            | Self::Random {
+                allowed_classes, ..
+            }
+            | Self::StageRouter {
+                allowed_classes, ..
+            }
+            | Self::LlmClassifier {
+                allowed_classes, ..
+            } => allowed_classes.as_deref(),
+        }
+    }
+
     /// Every target name the route mentions.
-    pub(super) fn target_refs(&self) -> Vec<&str> {
+    pub fn target_refs(&self) -> Vec<&str> {
         let lists: Vec<&Vec<String>> = match self {
             Self::Passthrough { targets, .. } | Self::Random { targets, .. } => vec![targets],
             Self::StageRouter {

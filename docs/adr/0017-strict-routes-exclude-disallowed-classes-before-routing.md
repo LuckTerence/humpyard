@@ -1,6 +1,6 @@
 # 0017. Strict routes exclude disallowed classes before routing
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-14
 - Supersedes: none
 - Change: `openspec/changes/add-auto-routing`

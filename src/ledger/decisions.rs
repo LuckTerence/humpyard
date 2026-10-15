@@ -43,6 +43,8 @@ pub struct Decision {
     pub skipped_rules: Vec<String>,
     pub budget: Option<String>,
     pub eligible_targets: Vec<String>,
+    /// Targets the route's `allowed_classes` removed before routing (ADR 0017).
+    pub excluded_targets: Vec<String>,
     pub stream: bool,
     pub prompt_tokens: Option<u64>,
     pub tools: bool,
@@ -99,6 +101,21 @@ fn json_list<T: Serialize>(items: &[T]) -> String {
     serde_json::to_string(items).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// v4: the targets a strict route's class list excluded. Old rows read as none.
+pub(super) async fn migrate_v4(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let has: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('decisions') WHERE name = 'excluded_targets'",
+    )
+    .fetch_one(pool)
+    .await?;
+    if has == 0 {
+        sqlx::query("ALTER TABLE decisions ADD COLUMN excluded_targets TEXT")
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn migrate_v2(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS decisions (\
@@ -148,7 +165,7 @@ pub(super) async fn insert_batch(pool: &SqlitePool, batch: &[Decision]) -> Resul
             "INSERT INTO decisions (request_id, ts_ms, key_id, session_id, format, requested_model, \
              route, rule, source, skipped_rules, budget, eligible_targets, stream, prompt_tokens, \
              tools, images, attempts, status, outcome, message, served_target, served_provider, \
-             latency_ms) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+             latency_ms, excluded_targets) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)",
         )
         .bind(&d.request_id)
         .bind(d.ts_ms)
@@ -173,6 +190,7 @@ pub(super) async fn insert_batch(pool: &SqlitePool, batch: &[Decision]) -> Resul
         .bind(&d.served_target)
         .bind(&d.served_provider)
         .bind(to_i64(d.latency_ms))
+        .bind(json_list(&d.excluded_targets))
         .execute(&mut *tx)
         .await?;
     }
@@ -236,6 +254,10 @@ pub(super) async fn query(
             served_target: row.get("served_target"),
             served_provider: row.get("served_provider"),
             latency_ms: from_i64(row.get::<i64, _>("latency_ms")),
+            excluded_targets: row
+                .get::<Option<String>, _>("excluded_targets")
+                .and_then(|json| serde_json::from_str(&json).ok())
+                .unwrap_or_default(),
         })
         .collect())
 }

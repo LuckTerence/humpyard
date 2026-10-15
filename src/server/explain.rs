@@ -98,6 +98,43 @@ impl Hypothetical {
 
 /// The distinct classes of `targets`, in the order they first appear. Targets without a class
 /// are left out: the report says only what is known.
+/// Which failures hand a request to the next target: `"all"` or the listed kinds.
+fn fallback_on_report(fallback: &crate::config::FallbackOn) -> Value {
+    match fallback.classes() {
+        None => json!("all"),
+        Some(classes) => json!(classes.iter().map(|c| c.as_str()).collect::<Vec<_>>()),
+    }
+}
+
+/// The route's classes: which its eligible targets span, whether it is strict, and what a strict
+/// route's `allowed_classes` excluded (ADR 0017).
+fn class_report(report: &mut Value, snap: &Snapshot, route: &str, targets: &[ModelId]) {
+    let classes = distinct_classes(snap, targets);
+    report["fallback_can_cross_classes"] = json!(classes.len() > 1);
+    report["classes"] = json!(classes);
+    report["allowed_classes"] = json!(route_spec_allowed(snap, route));
+    report["excluded_targets"] = Value::Array(
+        super::excluded_targets(snap, route)
+            .into_iter()
+            .map(|target| {
+                json!({
+                    "target": target,
+                    "class": snap.config.target_classes.get(&target),
+                    "reason": "its class is not in the route's allowed_classes",
+                })
+            })
+            .collect(),
+    );
+}
+
+/// The route's `allowed_classes`, or `null` when it is not strict.
+fn route_spec_allowed<'a>(snap: &'a Snapshot, route: &str) -> Option<&'a [String]> {
+    snap.config
+        .routes
+        .get(route)
+        .and_then(crate::config::RouteSpec::allowed_classes)
+}
+
 fn distinct_classes(snap: &Snapshot, targets: &[ModelId]) -> Vec<String> {
     let mut distinct: Vec<String> = Vec::new();
     for name in targets {
@@ -221,10 +258,7 @@ fn explain(
     match route.map(|r| plan_route(snap, r, &route_name, caller, budget, &info)) {
         Some(Ok(plan)) => {
             report["outcome"] = json!("ok");
-            report["fallback_on"] = match plan.fallback.classes() {
-                None => json!("all"),
-                Some(classes) => json!(classes.iter().map(|c| c.as_str()).collect::<Vec<_>>()),
-            };
+            report["fallback_on"] = fallback_on_report(&plan.fallback);
             let targets: Vec<Value> = plan
                 .models
                 .models_for(&Category::Any)
@@ -232,9 +266,12 @@ fn explain(
                 .map(|name| target_report(snap, name, recent))
                 .collect();
             report["targets"] = Value::Array(targets);
-            let classes = distinct_classes(snap, plan.models.models_for(&Category::Any));
-            report["fallback_can_cross_classes"] = json!(classes.len() > 1);
-            report["classes"] = json!(classes);
+            class_report(
+                &mut report,
+                snap,
+                &route_name,
+                plan.models.models_for(&Category::Any),
+            );
         }
         Some(Err(error)) => {
             report["outcome"] = json!(error.outcome());

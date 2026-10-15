@@ -79,6 +79,16 @@ in an ADR (`docs/adr/`) in the same change.
     (`a_clients_strings_never_become_labels`, `distinct_key_labels_are_capped`) and `tests/metrics.rs`;
     see [ADR-0016](adr/0016-metrics-are-one-registry-with-bounded-labels.md).
 
+18. **A strict route never calls a target outside its allowed classes.** Targets of other classes (and
+    unclassed ones) are removed before the routing algorithm runs, so no failure, retry or tier
+    substitution can reach them; the configuration fails to load if a strict route mentions an
+    unclassed target or has no allowed target; health, budgets, selectors and headers can narrow a
+    strict route but never add a target back. *Enforced by* `tests/strict_fallback.rs`
+    (`a_strict_route_never_calls_a_disallowed_target`,
+    `a_cooling_down_allowed_target_is_still_tried_and_nothing_is_added`,
+    `strict_routes_are_validated_when_the_config_loads`); see
+    [ADR-0017](adr/0017-strict-routes-exclude-disallowed-classes-before-routing.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

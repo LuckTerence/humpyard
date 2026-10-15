@@ -346,6 +346,7 @@ targets = ["a"]
             crate::config::RouteSpec::Passthrough {
                 targets: vec!["b".into()],
                 fallback_on: None,
+                allowed_classes: None,
             },
         );
         let new = Routes::build(&new_config, Some((&old_config, &old))).unwrap();

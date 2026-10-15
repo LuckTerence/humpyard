@@ -24,7 +24,7 @@ Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
-| Strict fallback: a route sets `allowed_classes`, and targets of other classes are removed before routing, so a private route can never reach a public target (spec in review, ADR 0017) | A silent private-to-public fallback is the one privacy gap routing still has; visibility shipped in 0.6.0 | `add-auto-routing` 2.2 |
+| Strict fallback: a route sets `allowed_classes`, and targets of other classes are removed before routing, so a private route can never reach a public target (built, in review for 0.8.1, ADR 0017) | A silent private-to-public fallback is the one privacy gap routing still has; visibility shipped in 0.6.0 | `add-auto-routing` 2.2 |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
