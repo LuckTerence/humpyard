@@ -1,6 +1,6 @@
 # 0016. Metrics are one registry with bounded labels
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-14
 - Supersedes: none
 - Change: `openspec/changes/add-metrics`

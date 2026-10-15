@@ -9,6 +9,7 @@ pub mod estimate;
 pub mod health;
 pub mod ledger;
 pub mod metering;
+pub mod metrics;
 pub mod num;
 pub mod policy;
 pub mod pool;

@@ -22,6 +22,7 @@ use crate::config::{FallbackOn, Price};
 use crate::error::{fallback_class, stop_fallback};
 use crate::estimate::tokens_for_bytes;
 use crate::ledger::{Attempt, Entry, Kind, Ledger};
+use crate::metrics::Metrics;
 use crate::pool::{Served, TargetClient};
 use crate::pricing::cost_micro_usd;
 
@@ -34,6 +35,8 @@ pub struct Accounting {
     ledger: Option<Ledger>,
     clock: Arc<dyn Clock>,
     tracker: Option<Arc<BudgetTracker>>,
+    /// Counts every finished call's tokens and cost (ADR 0016).
+    metrics: Option<Arc<Metrics>>,
 }
 
 impl Accounting {
@@ -46,7 +49,15 @@ impl Accounting {
             ledger,
             clock,
             tracker,
+            metrics: None,
         }
+    }
+
+    /// Also counts every finished call in `metrics`.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = Some(metrics);
+        self
     }
 
     pub fn ledger(&self) -> Option<&Ledger> {
@@ -70,6 +81,9 @@ impl Accounting {
         entry.ts_ms = self.clock.now_ms();
         if let (Some(tracker), Some(key)) = (&self.tracker, &entry.key_id) {
             tracker.record(key, entry.cost_micro_usd, entry.total_tokens());
+        }
+        if let Some(metrics) = &self.metrics {
+            metrics.observe_usage(&entry);
         }
         if let Some(ledger) = &self.ledger {
             ledger.record(entry);

@@ -1,0 +1,17 @@
+# Scrapes humpyard's separate metrics port (see docs/metrics.md). The Service must expose a port
+# named `metrics` that targets the address in `[metrics] listen`. The `release` label must match
+# your Prometheus's serviceMonitorSelector.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: humpyard
+  labels:
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: humpyard
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

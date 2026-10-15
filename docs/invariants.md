@@ -71,6 +71,14 @@ in an ADR (`docs/adr/`) in the same change.
     `a_broken_decision_table_never_affects_requests`); see
     [ADR-0013](adr/0013-decisions-recorded-per-request.md).
 
+17. **Metric labels never carry client strings, and metrics are off the request's critical path.**
+    Label values come only from the loaded configuration or fixed sets, so a client cannot grow
+    the series or put content into them; key ids are opt-in, only on four counters and capped;
+    `/metrics` has its own credential that opens nothing else; recording is non-blocking and never
+    fails a request. *Enforced by* `tests/metrics_registry.rs`
+    (`a_clients_strings_never_become_labels`, `distinct_key_labels_are_capped`) and `tests/metrics.rs`;
+    see [ADR-0016](adr/0016-metrics-are-one-registry-with-bounded-labels.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

@@ -15,8 +15,9 @@ critical path and never carry content.
   names, help text and label sets, so a view cannot drift from `/metrics`.
 - **Hand-rolled, not a crate.** Counters and gauges are atomics, histograms are a fixed bucket array
   of atomics, and the text format is simple. This avoids a dependency on the serving path and keeps
-  `cargo deny` and the binary small. Registration is static (a table in `metrics.rs`), so there is no
-  runtime registry lookup on the hot path: a request holds `&'static` handles chosen by index.
+  `cargo deny` and the binary small. Metric definitions are static (fields of the registry); a
+  series is found by its label values under a shared read lock and created once under a brief write
+  lock, so the hot path is a lookup and an atomic add.
 - **Cardinality is the real risk.** Every label value comes from the loaded configuration snapshot or
   from a fixed enum. The label sets are fixed per snapshot: on reload the registry keeps series for
   removed routes until restart (counters must not reset), but never adds a series from request data.
@@ -37,8 +38,9 @@ critical path and never carry content.
   `bearer_sha256` is required, or startup is refused, because an open `/metrics` on a public port
   must not be possible by omission. The credential is a hash in config like keys (ADR 0004) and is
   distinct from every virtual key; it authorizes `GET /metrics` and nothing else.
-- **Latency buckets.** Request duration (to first byte and to completion), seconds, buckets from 50 ms
-  to 120 s, because model calls are slow. Token and cost counters are monotonic integers (tokens;
+- **Latency buckets.** Request duration, seconds, buckets from 50 ms to 120 s, because model calls
+  are slow. It is the time to the response (headers, for a stream), which is what the decision
+  record already measures; the total length of a stream is not measured yet. Token and cost counters are monotonic integers (tokens;
   micro-USD per ADR 0006), so Prometheus `rate()` works and no float money is exposed.
 - **Pull only.** No push gateway, no OTLP. Scraping is the model; a later change can add exporters.
 
@@ -56,16 +58,15 @@ All names are prefixed `humpyard_`.
 |---|---|---|
 | `requests_total` | counter | `protocol`, `route`, `target`, `provider`, `status_class`, `key`\* |
 | `request_duration_seconds` | histogram | `route`, `target` |
-| `time_to_first_byte_seconds` | histogram | `route`, `target` |
 | `tokens_total` | counter | `route`, `target`, `direction` (`input`/`output`), `key`\* |
 | `cost_micro_usd_total` | counter | `route`, `target`, `key`\* |
 | `failovers_total` | counter | `route`, `from_target`, `to_target` |
-| `refusals_total` | counter | `reason` (`auth`, `budget`, `policy`, `no_route`, `forbidden`), `key`\* |
-| `endpoint_state` | gauge | `provider`, `endpoint`, `state` (`closed`/`open`/`probe`) |
+| `refusals_total` | counter | `reason` (`unauthorized`, `forbidden`, `budget_exhausted`, `no_eligible_target`, `unknown_model`, `bad_request`), `key`\* |
+| `endpoint_state` | gauge | `target`, `provider`, `model`, `state` (`healthy`/`cooling_down`/`probing`; 1 for the current one) |
 | `ledger_queue_depth` | gauge | none |
 | `ledger_dropped_total`, `ledger_failed_total` | counter | none |
 | `config_reload_total` | counter | `result` (`ok`/`rejected`) |
-| `config_generation` | gauge | none |
+| `config_last_reload_ok`, `config_loaded_timestamp_seconds` | gauge | none |
 | `quota_percent`, `quota_snapshot_age_seconds` | gauge | `provider`, `window` |
 | `build_info` | gauge (value 1) | `version` |
 

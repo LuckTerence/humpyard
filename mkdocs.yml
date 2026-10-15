@@ -83,6 +83,7 @@ nav:
       - Routing: routing.md
       - Keys, budgets and the ledger: budgets.md
       - API and endpoints: api.md
+      - Metrics and alerts: metrics.md
       - Providers: providers.md
       - Migrating from LiteLLM: migrating-from-litellm.md
       - Example configs: examples.md

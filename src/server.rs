@@ -52,6 +52,7 @@ const TOKEN_COUNT_HEADER: &str = "x-humpyard-token-count";
 /// Response headers naming the route that served a request and the selector rule that chose it.
 mod decisions;
 mod explain;
+mod metrics;
 mod quota;
 mod stats;
 
@@ -84,6 +85,8 @@ pub struct AppState {
     clock: Arc<dyn Clock>,
     /// The latest provider quota snapshots (kept across reloads).
     quota: Arc<crate::quota::QuotaStore>,
+    /// Operational metrics, served at `/metrics` when enabled (ADR 0016).
+    metrics: Arc<crate::metrics::Metrics>,
     /// The embedder's policy; it is composed with the budget policy of every snapshot.
     extra_policy: Arc<dyn RoutingPolicy>,
     /// The outcome of the latest reload attempt.
@@ -168,6 +171,7 @@ pub async fn run(
     let built = build(config, Options::default(), initial_fingerprint).await?;
     let poll = (poll_secs > 0).then(|| Duration::from_secs(poll_secs));
     let reloader = reload.map(|r| tokio::spawn(reload_loop(built.state.clone(), r, poll)));
+    let metrics_listener = spawn_metrics_listener(&built.state).await?;
     let (drain_tx, drain_rx) = tokio::sync::oneshot::channel::<()>();
     let server = axum::serve(listener, built.router)
         .with_graceful_shutdown(async move {
@@ -197,6 +201,9 @@ pub async fn run(
     }
     if let Some(reloader) = reloader {
         reloader.abort();
+    }
+    if let Some(task) = metrics_listener {
+        task.abort();
     }
     if cancelled {
         let _ = built.hard_stop.send(true);
@@ -294,6 +301,7 @@ async fn reload_loop(state: Arc<AppState>, mut reload: Reload, poll: Option<Dura
 async fn reload_config(state: &AppState, path: &std::path::Path) {
     let _one_at_a_time = state.reloading.lock().await;
     let outcome = try_reload(state, path);
+    state.metrics.observe_reload(outcome.is_ok());
     let mut status = state.reload.lock();
     status.attempts += 1;
     status.at_ms = Some(state.clock.now_ms());
@@ -329,6 +337,7 @@ fn try_reload(state: &AppState, path: &std::path::Path) -> Result<String, String
     if let Some(tracker) = &state.tracker {
         tracker.set_restricted_at(next.config.budget.restricted_at);
     }
+    state.metrics.set_vocabulary(&next.config);
     *state.snapshot.write() = Arc::new(next);
     Ok(fingerprint)
 }
@@ -426,7 +435,15 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
     if let (Some(tracker), Some(ledger)) = (&tracker, &ledger) {
         tracker.hydrate(ledger).await.map_err(|e| e.to_string())?;
     }
-    let accounting = Arc::new(Accounting::new(ledger, clock.clone(), tracker.clone()));
+    let metrics = Arc::new(crate::metrics::Metrics::new(crate::metrics::Settings {
+        key_labels: config.metrics.key_labels,
+        key_label_limit: config.metrics.key_label_limit,
+    }));
+    metrics.set_vocabulary(&config);
+    let metrics_main = config.metrics.enabled && config.metrics.listen.is_none();
+    let accounting = Arc::new(
+        Accounting::new(ledger, clock.clone(), tracker.clone()).with_metrics(metrics.clone()),
+    );
     let snapshot = Snapshot::build(config, &clock, &extra_policy, None, fingerprint)?;
     let (hard_stop_tx, hard_stop) = watch::channel(false);
     let state = Arc::new(AppState {
@@ -436,11 +453,12 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         tracker,
         clock: clock.clone(),
         quota: Arc::new(crate::quota::QuotaStore::default()),
+        metrics,
         extra_policy,
         reload: Mutex::new(ReloadStatus::default()),
         reloading: tokio::sync::Mutex::new(()),
     });
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(|| async { StatusCode::OK }))
         .route("/v1/models", get(list_models))
         .route("/v1/key/info", get(key_info))
@@ -469,8 +487,11 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route(
             "/v1/messages",
             post(|s, h, b| infer(s, WireFormat::AnthropicMessages, h, b)),
-        )
-        .with_state(state.clone());
+        );
+    if metrics_main {
+        app = app.route("/metrics", get(metrics::get_metrics));
+    }
+    let app = app.with_state(state.clone());
     spawn_quota_poller(&state, clock);
     Ok(Built {
         router: app,
@@ -478,6 +499,29 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         accounting,
         hard_stop: hard_stop_tx,
     })
+}
+
+/// Serves `/metrics` alone on its own address when `[metrics] listen` is set, so it is unreachable
+/// from the public port by construction (ADR 0016).
+async fn spawn_metrics_listener(
+    state: &Arc<AppState>,
+) -> Result<Option<tokio::task::JoinHandle<()>>, String> {
+    let config = state.snapshot().config.metrics.clone();
+    let Some(addr) = config.listen.filter(|_| config.enabled) else {
+        return Ok(None);
+    };
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .map_err(|e| format!("cannot bind metrics listener {addr}: {e}"))?;
+    tracing::info!(listen = %addr, "serving metrics");
+    let app = Router::new()
+        .route("/metrics", get(metrics::get_metrics))
+        .with_state(state.clone());
+    Ok(Some(tokio::spawn(async move {
+        if let Err(error) = axum::serve(listener, app).await {
+            tracing::error!(%error, "metrics listener stopped");
+        }
+    })))
 }
 
 /// Quota polling reads the live configuration each cycle and ends by itself once the server is
@@ -772,6 +816,7 @@ async fn infer(
 /// the decision as `cancelled`). See ADR 0013.
 struct DecisionGuard {
     accounting: Arc<Accounting>,
+    metrics: Arc<crate::metrics::Metrics>,
     decision: Decision,
     /// The request's upstream calls, once routing has reached them.
     ctx: Option<Arc<CallContext>>,
@@ -789,6 +834,7 @@ impl DecisionGuard {
         let request_id = new_request_id(now_ms);
         Self {
             accounting: state.accounting.clone(),
+            metrics: state.metrics.clone(),
             decision_id: request_id.clone(),
             decision: Decision {
                 request_id,
@@ -824,6 +870,7 @@ impl DecisionGuard {
         self.decision.message = message;
         self.decision.latency_ms =
             u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.metrics.observe_decision(&self.decision);
         if let Some(ledger) = self.accounting.ledger() {
             ledger.record_decision(std::mem::take(&mut self.decision));
         }

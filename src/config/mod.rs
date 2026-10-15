@@ -32,6 +32,18 @@ pub enum ConfigError {
     Invalid(String),
 }
 
+/// The `/metrics` endpoint (ADR 0016). Needs a restart to change.
+#[derive(Clone, Debug, Default)]
+pub struct MetricsConfig {
+    pub enabled: bool,
+    /// A separate address to serve on; `None` serves on the main listener.
+    pub listen: Option<SocketAddr>,
+    /// SHA-256 of the credential that reads `/metrics` on the main listener.
+    pub credential_sha256: Option<[u8; 32]>,
+    pub key_labels: bool,
+    pub key_label_limit: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct Config {
     pub listen: SocketAddr,
@@ -56,6 +68,7 @@ pub struct Config {
     pub ledger: Option<PathBuf>,
     pub budget: BudgetConfig,
     pub health: HealthConfig,
+    pub metrics: MetricsConfig,
     /// Routing rules, first match wins.
     pub select: Vec<SelectorSpec>,
 }
@@ -173,6 +186,7 @@ impl Config {
                 },
             );
         }
+        let metrics = validate::metrics(&raw.metrics, raw.listen, &raw.keys)?;
         Ok(Self {
             listen: raw.listen,
             shutdown_grace_secs: raw.shutdown_grace_secs,
@@ -213,6 +227,7 @@ impl Config {
                     ))
                 })
                 .collect::<Result<_, ConfigError>>()?,
+            metrics,
             ledger: raw.ledger.map(|l| l.path),
             select: raw.select,
             health: HealthConfig {

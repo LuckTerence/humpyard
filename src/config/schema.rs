@@ -37,9 +37,44 @@ pub(super) struct RawConfig {
     pub(super) budget: RawBudget,
     #[serde(default)]
     pub(super) health: RawHealth,
+    /// The Prometheus `/metrics` endpoint (off by default).
+    #[serde(default)]
+    pub(super) metrics: RawMetrics,
     /// Ordered rules choosing the route from request facts (`[[select]]`).
     #[serde(default)]
     pub(super) select: Vec<SelectorSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawMetrics {
+    #[serde(default)]
+    pub(super) enabled: bool,
+    /// Serve `/metrics` on this address instead of the main listener.
+    pub(super) listen: Option<SocketAddr>,
+    /// `sha256:<64 hex>` of the credential that reads `/metrics` on the main listener.
+    pub(super) bearer_sha256: Option<String>,
+    /// Add a `key` label to the per-request counters.
+    #[serde(default)]
+    pub(super) key_labels: bool,
+    #[serde(default = "default_key_label_limit")]
+    pub(super) key_label_limit: usize,
+}
+
+fn default_key_label_limit() -> usize {
+    100
+}
+
+impl Default for RawMetrics {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen: None,
+            bearer_sha256: None,
+            key_labels: false,
+            key_label_limit: default_key_label_limit(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

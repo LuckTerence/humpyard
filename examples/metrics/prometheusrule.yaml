@@ -1,0 +1,63 @@
+# The same alert rules as alert-rules.yaml, for the Prometheus Operator (kube-prometheus-stack).
+# The `release` label must match your Prometheus's ruleSelector.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: humpyard
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+  - name: humpyard
+    rules:
+      - alert: HumpyardHighErrorRatio
+        expr: |
+          sum(rate(humpyard_requests_total{status_class="5xx"}[5m]))
+            / sum(rate(humpyard_requests_total[5m])) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 5% of humpyard requests fail upstream"
+      - alert: HumpyardFailoverRateHigh
+        expr: |
+          sum(rate(humpyard_failovers_total[10m]))
+            / sum(rate(humpyard_requests_total[10m])) > 0.1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 10% of requests needed a failover; a provider may be degraded"
+      - alert: HumpyardEndpointCoolingDown
+        expr: humpyard_endpoint_state{state="cooling_down"} == 1
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.provider }}/{{ $labels.model }} has been skipped for 15 minutes"
+      - alert: HumpyardLedgerDropping
+        expr: increase(humpyard_ledger_dropped_total[10m]) > 0 or increase(humpyard_ledger_failed_total[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "The ledger is losing entries; spend and budgets are undercounted"
+      - alert: HumpyardQuotaSnapshotStale
+        expr: humpyard_quota_snapshot_age_seconds > 600
+        for: 10m
+        labels: {severity: info}
+        annotations:
+          summary: "No fresh quota reading for {{ $labels.provider }}; quota rules treat it as unknown"
+      - alert: HumpyardQuotaHigh
+        expr: humpyard_quota_percent{window="weekly"} > 90
+        for: 5m
+        labels: {severity: info}
+        annotations:
+          summary: "{{ $labels.provider }} weekly quota is above 90%"
+      - alert: HumpyardConfigReloadRejected
+        expr: humpyard_config_last_reload_ok == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The last humpyard config reload was rejected; the previous config is still serving"
+      - alert: HumpyardDown
+        expr: absent(humpyard_build_info)
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "humpyard is not being scraped"
