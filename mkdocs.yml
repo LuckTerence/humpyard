@@ -111,3 +111,4 @@ nav:
           - "0015 Provider quota": adr/0015-provider-quota-is-polled-advisory-and-fails-open.md
           - "0016 Metrics, one registry": adr/0016-metrics-are-one-registry-with-bounded-labels.md
           - "0017 Strict routes": adr/0017-strict-routes-exclude-disallowed-classes-before-routing.md
+          - "0018 Cold targets": adr/0018-cold-targets-are-skipped-only-when-an-alternative-remains.md
