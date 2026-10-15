@@ -8,7 +8,12 @@
 ## 2. Pool classes and opt-in strict fallback
 
 - [x] 2.1 Make cross-class fallback visible first: flag it on decisions and in `explain` (no behavior change)
-- [ ] 2.2 Class labels on targets, an allowed-class list per route, refusal when no allowed target remains; tests (strict refuses, lenient falls back, default unchanged); ADR
+- [ ] 2.2 Strict fallback (ADR 0017), in steps:
+  - [ ] 2.2.1 `allowed_classes` on every route type; load-time validation (valid labels, no unclassed target on a strict route, at least one allowed target); tests for each rejection and for the default being unchanged
+  - [ ] 2.2.2 Apply it in `plan_route` beside the routing policy so excluded targets never reach the algorithm; tests: strict route fails without calling the public target (mock upstream asserts zero calls), lenient route still falls back, tier substitution stays inside the allowed set, a cooling-down allowed target is still tried
+  - [ ] 2.2.3 Decisions: `excluded_targets` (ledger schema v4 with an in-place upgrade test), `GET /v1/decisions` output, `explain` per-target allowed or excluded with the reason
+  - [ ] 2.2.4 Metric `humpyard_fallback_blocked_total{route}`, the alert rule in `examples/metrics` and the dashboard panel, kept in step by the existing drift test
+  - [ ] 2.2.5 Docs (`routing.md` Target classes, `configuration.md`, `api.md`), the private-routes recipe in `examples`, architecture and roadmap
 
 ## 3. Session stickiness (investigate first)
 

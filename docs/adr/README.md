@@ -30,6 +30,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0014](0014-prices-are-proposed-never-fetched-at-runtime.md) | Prices are proposed by a CLI and never fetched at runtime (proposed) |
 | [0015](0015-provider-quota-is-polled-advisory-and-fails-open.md) | Provider quota is polled at runtime, advisory, and fails open |
 | [0016](0016-metrics-are-one-registry-with-bounded-labels.md) | Metrics are one registry with bounded labels |
+| [0017](0017-strict-routes-exclude-disallowed-classes-before-routing.md) | Strict routes exclude disallowed classes before routing |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.
