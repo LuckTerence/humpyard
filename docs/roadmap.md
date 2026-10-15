@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -20,12 +20,12 @@ Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://di
 | 0.7.1 | 2026-10-14 | [Try it in a minute](demo.md): a no-key demo (mock provider, real gateway) that routes by request type, explains a decision and compares cost; the humpyard badge, favicon and link previews; `rustls` 0.23.46 (RUSTSEC-2026-0346) |
 | 0.8.0 | 2026-10-14 | `/metrics`: Prometheus metrics on one registry (a status page can read the same one later), off by default, on a separate listener or behind its own credential, labels only from configuration, opt-in per-key series; Grafana dashboard, alert rules, ServiceMonitor and NetworkPolicy examples (ADR 0016) |
 | 0.8.1 | 2026-10-15 | Strict routes: `allowed_classes` removes targets of other classes before routing, so a private route can never reach a public target (validated at load, recorded on decisions, `humpyard_fallback_blocked_total`, ADR 0017); a summary Grafana dashboard (totals over a time range) and a corrected Switchyard link |
+| 0.8.2 | 2026-10-15 | Health-driven eligibility: a target whose endpoints are all cooling down is left out of a request's plan when another target remains, failing open so health still never denies service (`cold_targets` on decisions, `humpyard_health_skips_total`, `[health] skip_cold_targets`, ADR 0018) |
 
 ## Building now
 
 | Item | Why now | Spec |
 |---|---|---|
-| Health-driven eligibility: skip a target whose endpoints are all cooling down when another remains, failing open (built, in review for 0.8.2, ADR 0018) | Every request to a route whose first target is down spends an attempt on it until it recovers; deferred in ADR 0009 until the planning step knew the whole route | `add-health-eligibility` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -41,7 +41,7 @@ Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://di
 In this order, API first. See [Direction: operating humpyard](architecture.md#direction-operating-humpyard).
 
 1. ~~A `/metrics` endpoint (Prometheus)~~ Shipped in 0.8.0; it is built on one registry, so the read-only status page (item 5) is a thin view over it.
-2. Health-driven target eligibility (tier substitution on a cold target). Built in `add-health-eligibility` (ADR 0018): skip a cold target only when an alternative remains; ships in 0.8.2.
+2. ~~Health-driven target eligibility~~ Shipped in 0.8.2 (ADR 0018): a cold target is skipped only when an alternative remains.
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
 4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
 5. A read-only status page served by the binary, built on the same API.
