@@ -328,6 +328,7 @@ pub struct Metrics {
     tokens: Owned,
     cost: Owned,
     failovers: Owned,
+    blocked: Owned,
     refusals: Owned,
     reloads: Owned,
 }
@@ -377,6 +378,13 @@ impl Metrics {
                 "Attempts that failed and were followed by another attempt.",
                 Kind::Counter,
                 &["route", "from_target", "to_target"],
+                false,
+            ),
+            blocked: Owned::new(
+                "fallback_blocked_total",
+                "Requests that failed upstream on a strict route that had excluded targets: a fallback the route's allowed_classes did not permit.",
+                Kind::Counter,
+                &["route"],
                 false,
             ),
             refusals: Owned::new(
@@ -435,6 +443,15 @@ impl Metrics {
                 .observe_ms(&[route.clone(), target], d.latency_ms);
         }
         self.observe_failovers(&route, d);
+        // A strict route that failed after calling its allowed targets: the excluded ones are the
+        // fallback it did not take.
+        if !d.excluded_targets.is_empty()
+            && !d.attempts.is_empty()
+            && d.outcome != "ok"
+            && d.outcome != "cancelled"
+        {
+            self.blocked.add(std::slice::from_ref(&route), 1);
+        }
         if REFUSALS.contains(&d.outcome.as_str()) {
             let mut labels = vec![d.outcome.clone()];
             labels.extend(key);
@@ -517,6 +534,7 @@ impl Metrics {
             &self.tokens,
             &self.cost,
             &self.failovers,
+            &self.blocked,
             &self.refusals,
             &self.reloads,
         ]

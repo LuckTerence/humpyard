@@ -23,6 +23,10 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
 - `class = "private"` on a target (optional): a label (`private`, `public`, `paid`, or your own) that
   decisions and `explain` use to flag a fallback that crosses classes; see
   [Target classes](routing.md#target-classes).
+- `allowed_classes = ["private"]` on a route (optional): the route may only use targets of those
+  classes; the others are removed before routing, so a private route can never reach a public
+  target. Every target the route names must have a class. See
+  [Strict routes](routing.md#strict-routes).
 - `[[select]]`: ordered rules that choose the route from the key, the requested model, headers
   (`x-humpyard-profile`, `x-humpyard-tag-<name>`, or any named header), agent metadata, and what
   the request contains (estimated prompt size, tools, images). First
