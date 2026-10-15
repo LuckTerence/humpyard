@@ -363,36 +363,49 @@ endpoints = [{ provider = "p", model = "m" }]
     );
 }
 
+/// A version-3 database, built offline on its own connection (no live ledger pool is altered, so no
+/// connection holds a statement prepared against the newer schema): a fresh ledger's file, with the
+/// `excluded_targets` column dropped, one legacy decision row inserted and the version rolled back.
+/// The row is dated now: the ledger prunes decisions older than its retention shortly after opening.
+async fn legacy_v3_database(path: &std::path::Path) {
+    use sqlx::Connection;
+    humpyard::ledger::Ledger::open(path)
+        .await
+        .unwrap()
+        .shutdown()
+        .await;
+    let options = sqlx::sqlite::SqliteConnectOptions::new().filename(path);
+    let mut conn = sqlx::SqliteConnection::connect_with(&options)
+        .await
+        .unwrap();
+    for statement in [
+        "ALTER TABLE decisions DROP COLUMN excluded_targets",
+        "INSERT INTO decisions (request_id, ts_ms, format, requested_model, skipped_rules, \
+         eligible_targets, stream, tools, images, attempts, status, outcome, latency_ms) \
+         VALUES ('before', CAST(strftime('%s', 'now') AS INTEGER) * 1000, 'openai_chat', 'm', '[]', '[]', 0, 0, 0, '[]', 200, 'ok', 5)",
+        "PRAGMA user_version = 3",
+    ] {
+        sqlx::query(statement).execute(&mut conn).await.unwrap();
+    }
+    conn.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn an_older_ledger_is_upgraded_and_keeps_its_decisions() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("old.db");
-    let decision = |id: &str, excluded: Vec<String>| humpyard::ledger::Decision {
-        request_id: id.into(),
+    legacy_v3_database(&path).await;
+
+    let ledger = humpyard::ledger::Ledger::open(&path).await.unwrap();
+    ledger.record_decision(humpyard::ledger::Decision {
+        request_id: "after".into(),
         ts_ms: humpyard::clock::SystemClock.now_ms(),
         format: "openai_chat".into(),
         outcome: "ok".into(),
         status: 200,
-        excluded_targets: excluded,
+        excluded_targets: vec!["pub".into()],
         ..humpyard::ledger::Decision::default()
-    };
-    {
-        let ledger = humpyard::ledger::Ledger::open(&path).await.unwrap();
-        ledger.record_decision(decision("before", vec![]));
-        ledger.flush().await;
-        // Roll the file back to version 3: no excluded_targets column.
-        sqlx::query("ALTER TABLE decisions DROP COLUMN excluded_targets")
-            .execute(ledger.pool())
-            .await
-            .unwrap();
-        sqlx::query("PRAGMA user_version = 3")
-            .execute(ledger.pool())
-            .await
-            .unwrap();
-        ledger.shutdown().await;
-    }
-    let ledger = humpyard::ledger::Ledger::open(&path).await.unwrap();
-    ledger.record_decision(decision("after", vec!["pub".into()]));
+    });
     ledger.flush().await;
     let rows = ledger
         .decisions(&humpyard::ledger::DecisionQuery {
