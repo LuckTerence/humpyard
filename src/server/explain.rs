@@ -98,6 +98,29 @@ impl Hypothetical {
 
 /// The distinct classes of `targets`, in the order they first appear. Targets without a class
 /// are left out: the report says only what is known.
+/// The planned route: its targets (each with its health), fallback kinds, classes, what a strict
+/// route excluded, and what health skipped or would fail open on (ADR 0017, ADR 0018).
+fn plan_report(
+    report: &mut Value,
+    snap: &Snapshot,
+    route: &str,
+    planned: &super::Planned,
+    recent: &HashMap<String, GroupStats>,
+) {
+    let models = planned.plan.models.models_for(&Category::Any);
+    report["outcome"] = json!("ok");
+    report["fallback_on"] = fallback_on_report(&planned.plan.fallback);
+    report["targets"] = Value::Array(
+        models
+            .iter()
+            .map(|name| target_report(snap, name, recent))
+            .collect(),
+    );
+    report["health_skipped_targets"] = json!(planned.cold_skipped);
+    report["health_fail_open"] = json!(planned.fail_open);
+    class_report(report, snap, route, models);
+}
+
 /// Which failures hand a request to the next target: `"all"` or the listed kinds.
 fn fallback_on_report(fallback: &crate::config::FallbackOn) -> Value {
     match fallback.classes() {
@@ -256,23 +279,7 @@ fn explain(
     report["budget"] = json!(budget.map(budget_name));
     let route = snap.routes.get(&route_name);
     match route.map(|r| plan_route(snap, r, &route_name, caller, budget, &info)) {
-        Some(Ok(plan)) => {
-            report["outcome"] = json!("ok");
-            report["fallback_on"] = fallback_on_report(&plan.fallback);
-            let targets: Vec<Value> = plan
-                .models
-                .models_for(&Category::Any)
-                .iter()
-                .map(|name| target_report(snap, name, recent))
-                .collect();
-            report["targets"] = Value::Array(targets);
-            class_report(
-                &mut report,
-                snap,
-                &route_name,
-                plan.models.models_for(&Category::Any),
-            );
-        }
+        Some(Ok(planned)) => plan_report(&mut report, snap, &route_name, &planned, recent),
         Some(Err(error)) => {
             report["outcome"] = json!(error.outcome());
             report["message"] = json!(error.to_string());
@@ -314,6 +321,7 @@ fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, Group
     json!({
         "target": name.to_string(),
         "class": snap.config.target_classes.get(name.as_str()),
+        "cold": super::is_cold(snap, name.as_str()),
         "endpoints": endpoints,
         "recent": recent,
     })

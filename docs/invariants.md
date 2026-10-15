@@ -54,9 +54,13 @@ in an ADR (`docs/adr/`) in the same change.
    (including `run_waits_for_a_stalled_ledger_writer_before_returning`), `tests/shutdown_process.rs`
    (real signals against the binary) and `tests/usage.rs`
    (`a_request_cancelled_mid_flight_still_records_the_judge_call_it_paid_for`).
-14. **Health never denies service.** A target whose endpoints are all cooling down is still tried,
-    and client errors never count against an endpoint. *Enforced by* `tests/health.rs`; see
-    [ADR-0009](adr/0009-endpoint-health-lives-in-the-pool.md).
+14. **Health never denies service.** A target whose endpoints are all cooling down is still tried
+    unless another target remains (then it is left out of the plan, never the last one), a request is
+    never refused because of health, and client errors never count against an endpoint. *Enforced by*
+    `tests/health.rs` and `tests/health_eligibility.rs`
+    (`health_never_denies_service_when_everything_is_cold`, `a_single_cold_target_is_still_tried`); see
+    [ADR-0009](adr/0009-endpoint-health-lives-in-the-pool.md) and
+    [ADR-0018](adr/0018-cold-targets-are-skipped-only-when-an-alternative-remains.md).
 
 15. **A reload is all or nothing.** A config that fails to load, validate or build, or that changes
     a setting a live process cannot change, leaves the running configuration untouched, and a

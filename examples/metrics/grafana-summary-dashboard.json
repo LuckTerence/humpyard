@@ -1278,6 +1278,55 @@
           "range": false
         }
       ]
+    },
+    {
+      "id": 25,
+      "type": "bargauge",
+      "title": "Health skips by target",
+      "description": "Requests in which a cold target was left out of the plan because another target remained.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "namePlacement": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, target) (increase(humpyard_health_skips_total[$__range]))",
+          "legendFormat": "{{route}} / {{target}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ]
     }
   ]
 }

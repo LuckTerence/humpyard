@@ -329,6 +329,7 @@ pub struct Metrics {
     cost: Owned,
     failovers: Owned,
     blocked: Owned,
+    skips: Owned,
     refusals: Owned,
     reloads: Owned,
 }
@@ -387,6 +388,13 @@ impl Metrics {
                 &["route"],
                 false,
             ),
+            skips: Owned::new(
+                "health_skips_total",
+                "Requests in which a target was left out of the plan because every endpoint was cooling down and another target remained.",
+                Kind::Counter,
+                &["route", "target"],
+                false,
+            ),
             refusals: Owned::new(
                 "refusals_total",
                 "Requests the gateway refused before any upstream call, by reason.",
@@ -443,6 +451,7 @@ impl Metrics {
                 .observe_ms(&[route.clone(), target], d.latency_ms);
         }
         self.observe_failovers(&route, d);
+        self.observe_health_skips(&route, d);
         // A strict route that failed after calling its allowed targets: the excluded ones are the
         // fallback it did not take.
         if !d.excluded_targets.is_empty()
@@ -456,6 +465,14 @@ impl Metrics {
             let mut labels = vec![d.outcome.clone()];
             labels.extend(key);
             self.refusals.add(&labels, 1);
+        }
+    }
+
+    fn observe_health_skips(&self, route: &str, d: &Decision) {
+        let vocab = self.vocab.read();
+        for target in &d.cold_targets {
+            self.skips
+                .add(&[route.to_string(), pick(&vocab.targets, Some(target))], 1);
         }
     }
 
@@ -535,6 +552,7 @@ impl Metrics {
             &self.cost,
             &self.failovers,
             &self.blocked,
+            &self.skips,
             &self.refusals,
             &self.reloads,
         ]

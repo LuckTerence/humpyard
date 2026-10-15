@@ -25,7 +25,7 @@ Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
-| Health-driven eligibility: skip a target whose endpoints are all cooling down when another remains, failing open (spec in review, ADR 0018) | Every request to a route whose first target is down spends an attempt on it until it recovers; deferred in ADR 0009 until the planning step knew the whole route | `add-health-eligibility` |
+| Health-driven eligibility: skip a target whose endpoints are all cooling down when another remains, failing open (built, in review for 0.8.2, ADR 0018) | Every request to a route whose first target is down spends an attempt on it until it recovers; deferred in ADR 0009 until the planning step knew the whole route | `add-health-eligibility` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -41,7 +41,7 @@ Last updated: 2026-10-14. Latest release: 0.8.1. Community: [Discord](https://di
 In this order, API first. See [Direction: operating humpyard](architecture.md#direction-operating-humpyard).
 
 1. ~~A `/metrics` endpoint (Prometheus)~~ Shipped in 0.8.0; it is built on one registry, so the read-only status page (item 5) is a thin view over it.
-2. Health-driven target eligibility (tier substitution on a cold target). Proposed in `add-health-eligibility` (ADR 0018): skip a cold target only when an alternative remains.
+2. Health-driven target eligibility (tier substitution on a cold target). Built in `add-health-eligibility` (ADR 0018): skip a cold target only when an alternative remains; ships in 0.8.2.
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
 4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
 5. A read-only status page served by the binary, built on the same API.

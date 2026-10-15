@@ -312,19 +312,33 @@ never counted.
 failure_threshold = 3  # 0 turns health tracking off
 cooldown_secs = 30
 max_cooldown_secs = 300
+skip_cold_targets = true  # leave a cold target out of the plan when another target remains
 ```
 
-- **Health never denies service.** If every endpoint of a target is cooling down, the target is
-  still tried, soonest-to-reopen first.
+- **A cold target is skipped when an alternative exists.** A target whose endpoints are *all*
+  cooling down is left out of the route's targets for a request, so the request does not spend its
+  first attempt (and a recorded failure) on a target the gateway already knows is down. A tier
+  emptied this way is served by the other tier, as with any [routing policy](#routing-policy) removal.
+  It happens in the same planning step as [strict routes](#strict-routes) and the budget policy, after
+  them: it never adds a target back, and a strict route skips only within its allowed targets.
+- **Health never denies service.** If skipping would leave nothing (every eligible target is cold, or
+  the only one is), nothing is skipped and the targets are tried as before, soonest-to-reopen first.
+  A request is never refused because of health.
+- **Recovery is by probe.** A target stops being cold when its cooldown ends; the next request that
+  reaches it is the probe, and a success returns it to service. While it is skipped it receives no
+  traffic, so recovery takes at most one request after the cooldown.
+- **Visible.** `explain` marks each target `cold` or not, lists `health_skipped_targets`, and says
+  `health_fail_open` when every eligible target was cold. Each decision lists its `cold_targets`
+  (`GET /v1/decisions`), and `humpyard_health_skips_total{route,target}` counts the skips
+  ([Metrics](metrics.md)). Set `skip_cold_targets = false` for the old always-in-order behavior.
 - State is in memory per process: a restart starts everything healthy. Failures after a stream has
   begun are not counted (nothing fails over then either).
 - The log shows each transition ("endpoint is failing; skipping it for the cooldown",
   "endpoint recovered"), and `GET /v1/health` (with a key when the gateway has keys) lists every
   endpoint's `state` (`healthy`, `cooling_down`, `probing`), `consecutive_failures` and
   `cooldown_remaining_ms`.
-- Not yet: health does not make a whole target ineligible for tier substitution (a policy cannot
-  know a route has a healthy alternative, so that needs route topology and a fall-back step), and
-  `Retry-After` is not honored. See [ADR 0009](adr/0009-endpoint-health-lives-in-the-pool.md).
+- Not yet: `Retry-After` is not honored. See [ADR 0009](adr/0009-endpoint-health-lives-in-the-pool.md)
+  and [ADR 0018](adr/0018-cold-targets-are-skipped-only-when-an-alternative-remains.md).
 
 ## Routing policy
 

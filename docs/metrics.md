@@ -47,6 +47,7 @@ cannot call inference or any other endpoint.
 | `humpyard_failovers_total` | counter | `route`, `from_target`, `to_target` |
 | `humpyard_refusals_total` | counter | `reason`, `key`\* |
 | `humpyard_fallback_blocked_total` | counter | `route` |
+| `humpyard_health_skips_total` | counter | `route`, `target` |
 | `humpyard_endpoint_state` | gauge | `target`, `provider`, `model`, `state` (1 for the current state) |
 | `humpyard_ledger_queue_depth` | gauge | none |
 | `humpyard_ledger_dropped_total`, `humpyard_ledger_failed_total` | counter | none |
@@ -67,6 +68,9 @@ Notes:
   money is exposed. For spend you act on, use the ledger.
 - **Blocked fallbacks** counts requests that failed upstream on a [strict route](routing.md#strict-routes)
   that had excluded targets: the fallback the route did not permit. It stays at 0 on routes that are not strict.
+- **Health skips** counts requests in which a target was [left out of the plan](routing.md#endpoint-health)
+  because every endpoint was cooling down and another target remained. It stays at 0 when nothing is cold, and
+  when every eligible target is cold (the route fails open).
 - **A request that matched no route** is counted under `route="none"`.
 - **Refusal reasons** are `unauthorized`, `forbidden`, `budget_exhausted`, `no_eligible_target`,
   `unknown_model` and `bad_request`. Upstream failures show up in `status_class` and in failovers.

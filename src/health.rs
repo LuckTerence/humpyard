@@ -204,6 +204,7 @@ mod tests {
             failure_threshold: threshold,
             cooldown_secs: 10,
             max_cooldown_secs: 35,
+            skip_cold_targets: true,
         };
         (Breaker::new(config, clock.clone()), clock)
     }

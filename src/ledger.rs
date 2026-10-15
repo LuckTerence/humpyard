@@ -24,7 +24,7 @@ pub use decisions::{Attempt, Decision, DecisionQuery};
 pub use quota::{QuotaPoint, QuotaQuery, QuotaSample};
 pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, percentile};
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 /// How often the writer deletes decisions past their retention.
 const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 /// Decision retention when none is given, in days.
@@ -463,6 +463,10 @@ async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     if version < 4 {
         // v4 (ADR 0017): which targets a strict route's class list excluded.
         decisions::migrate_v4(pool).await?;
+    }
+    if version < 5 {
+        // v5 (ADR 0018): which targets were skipped because they were cold.
+        decisions::migrate_v5(pool).await?;
     }
     if version < SCHEMA_VERSION {
         // PRAGMA does not take bound parameters; the value is a compile-time constant.
