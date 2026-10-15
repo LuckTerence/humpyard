@@ -366,6 +366,7 @@ endpoints = [{ provider = "p", model = "m" }]
 /// A version-3 database, built offline on its own connection (no live ledger pool is altered, so no
 /// connection holds a statement prepared against the newer schema): a fresh ledger's file, with the
 /// `excluded_targets` column dropped, one legacy decision row inserted and the version rolled back.
+/// The row is dated now: the ledger prunes decisions older than its retention shortly after opening.
 async fn legacy_v3_database(path: &std::path::Path) {
     use sqlx::Connection;
     humpyard::ledger::Ledger::open(path)
@@ -381,7 +382,7 @@ async fn legacy_v3_database(path: &std::path::Path) {
         "ALTER TABLE decisions DROP COLUMN excluded_targets",
         "INSERT INTO decisions (request_id, ts_ms, format, requested_model, skipped_rules, \
          eligible_targets, stream, tools, images, attempts, status, outcome, latency_ms) \
-         VALUES ('before', 1, 'openai_chat', 'm', '[]', '[]', 0, 0, 0, '[]', 200, 'ok', 5)",
+         VALUES ('before', CAST(strftime('%s', 'now') AS INTEGER) * 1000, 'openai_chat', 'm', '[]', '[]', 0, 0, 0, '[]', 200, 'ok', 5)",
         "PRAGMA user_version = 3",
     ] {
         sqlx::query(statement).execute(&mut conn).await.unwrap();
