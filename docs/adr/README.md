@@ -31,6 +31,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0015](0015-provider-quota-is-polled-advisory-and-fails-open.md) | Provider quota is polled at runtime, advisory, and fails open |
 | [0016](0016-metrics-are-one-registry-with-bounded-labels.md) | Metrics are one registry with bounded labels |
 | [0017](0017-strict-routes-exclude-disallowed-classes-before-routing.md) | Strict routes exclude disallowed classes before routing |
+| [0018](0018-cold-targets-are-skipped-only-when-an-alternative-remains.md) | Cold targets are skipped only when an alternative remains |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.
