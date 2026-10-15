@@ -110,3 +110,4 @@ nav:
           - "0014 Price import": adr/0014-prices-are-proposed-never-fetched-at-runtime.md
           - "0015 Provider quota": adr/0015-provider-quota-is-polled-advisory-and-fails-open.md
           - "0016 Metrics, one registry": adr/0016-metrics-are-one-registry-with-bounded-labels.md
+          - "0017 Strict routes": adr/0017-strict-routes-exclude-disallowed-classes-before-routing.md

@@ -27,6 +27,29 @@ metadata, prompt size, tools and images, first match wins, and clients can narro
   one when the private model is down; a global fail-closed rule would break them. The class labels
   and the allowed-class list make the policy explicit either way, and the flag on decisions makes
   today's silent behavior observable first.
+- **Strict fallback is an eligibility rule, applied at planning (ADR 0017).** A route may set
+  `allowed_classes = ["private"]`. Targets of any other class (and unclassed targets) are removed
+  from the route's target list in `plan_route`, in the same step where the routing policy narrows
+  targets (ADR 0008), so the algorithm, the failover and the tier substitution only ever see allowed
+  targets. A disallowed target is not "refused after a failure": it is never constructed for the
+  request, so no failure path, retry or substitution can reach it. This is simpler and safer than
+  checking at the moment of fallback, which would depend on Switchyard's internals.
+  - *Config is validated fail-closed.* A class in `allowed_classes` must be a valid label; every
+    target the route mentions must have a class (an unclassed target on a strict route is an error,
+    not a silent exclusion); and at least one target must be allowed, so a route cannot be
+    configured to always refuse. Routes without `allowed_classes` behave exactly as today.
+  - *What it does not override.* Health still never denies service (ADR 0009): a strict route whose
+    only allowed target is cooling down still tries it, and returns that target's error. Budgets
+    still narrow within the allowed set. Selectors still choose the route; a client can narrow but
+    never widen (ADR 0011), and no header can add a class.
+  - *When the allowed targets fail*, the client gets the upstream error (it is not rewritten), and
+    the failure is visible three ways: the decision lists `excluded_targets` (the targets the class
+    list removed), `explain` marks each target `allowed` or `excluded` with the reason, and the
+    `humpyard_fallback_blocked_total{route}` metric counts requests that failed on a strict route
+    that had excluded targets, which is exactly the "it would have leaked to public" signal.
+  - *Decisions gain a field.* `excluded_targets` is stored (ledger schema v4, a JSON column like
+    `eligible_targets`) so a refusal is auditable after the fact. It holds target names from
+    configuration only.
 - **Stickiness depends on the client.** Switchyard reads session ids from Claude Code, Codex and
   `x-switchyard-session-id`. A client that sends none gets no stickiness, and a static provider
   header cannot carry a per-conversation id, so the investigation measures coverage per client

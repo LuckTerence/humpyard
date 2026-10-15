@@ -24,6 +24,7 @@ Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
+| Strict fallback: a route sets `allowed_classes`, and targets of other classes are removed before routing, so a private route can never reach a public target (spec in review, ADR 0017) | A silent private-to-public fallback is the one privacy gap routing still has; visibility shipped in 0.6.0 | `add-auto-routing` 2.2 |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -31,7 +32,6 @@ Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://di
 | # | Item | Depends on | Spec |
 |---|---|---|---|
 | 1 | Rules that match on quota (`when.quota`), shown in `explain` and recorded on decisions, plus a pacing recipe | the measurement above | `add-quota-routing` step 3 |
-| 2 | Strict fallback: a route lists the classes it may fall through to, and is refused instead of crossing | cross-class visibility (shipped) | `add-auto-routing` 2.2 |
 | 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool | nothing | `add-auto-routing` 3.1 |
 | 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
 
