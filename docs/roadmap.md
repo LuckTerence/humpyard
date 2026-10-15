@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.0. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -18,12 +18,12 @@ Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://di
 | 0.6.0 | 2026-10-13 | `price_source` in config, so one command checks every provider; provider quota: a poller and `GET /v1/quota` (OpenCode Go first) |
 | 0.7.0 | 2026-10-14 | Quota history: samples kept in the ledger (schema v3, upgraded in place) and `GET /v1/quota/history`, with the cost of the calls between samples; the roadmap page |
 | 0.7.1 | 2026-10-14 | [Try it in a minute](demo.md): a no-key demo (mock provider, real gateway) that routes by request type, explains a decision and compares cost; the humpyard badge, favicon and link previews; `rustls` 0.23.46 (RUSTSEC-2026-0346) |
+| 0.8.0 | 2026-10-14 | `/metrics`: Prometheus metrics on one registry (a status page can read the same one later), off by default, on a separate listener or behind its own credential, labels only from configuration, opt-in per-key series; Grafana dashboard, alert rules, ServiceMonitor and NetworkPolicy examples (ADR 0016) |
 
 ## Building now
 
 | Item | Why now | Spec |
 |---|---|---|
-| `/metrics` (Prometheus) on one metrics registry, so a status page for people without Prometheus is a thin view later | Operating the gateway needs live health numbers (rate, errors, failovers, latency, breaker state) beyond `/v1/health`; built, in review for 0.8.0 | `add-metrics` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -39,7 +39,7 @@ Last updated: 2026-10-14. Latest release: 0.7.1. Community: [Discord](https://di
 
 In this order, API first. See [Direction: operating humpyard](architecture.md#direction-operating-humpyard).
 
-1. A `/metrics` endpoint (Prometheus), so existing dashboards need no custom UI. Proposed in `add-metrics`; it is built on one registry so a read-only status page for people without Prometheus is a later, thin view.
+1. ~~A `/metrics` endpoint (Prometheus)~~ Shipped in 0.8.0; it is built on one registry, so the read-only status page (item 5) is a thin view over it.
 2. Health-driven target eligibility (tier substitution on a cold target).
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
 4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
