@@ -3,8 +3,9 @@
 Three ways to run humpyard: a release binary, the container image, or the macOS launchd service
 (which uses the binary). Releases are described at the end.
 
-Whatever you use, you need a config file (see [examples/config.toml](../examples/config.toml),
-checked with `humpyard check-config`) and the provider API keys in **environment variables** named
+Whatever you use, you need a config file ([examples/quickstart.toml](../examples/quickstart.toml) is
+the smallest; [examples/config.toml](../examples/config.toml) adds failover across two providers; check
+one with `humpyard check-config`) and the provider API keys in **environment variables** named
 by the config (`api_key_env`). Keys are never stored in the config.
 
 ## Release binary
@@ -26,7 +27,7 @@ install -m 755 humpyard-v0.8.2-aarch64-apple-darwin/humpyard ~/.local/bin/
 ## Container image
 
 ```sh
-docker run -d --name humpyard -p 8080:8080 \
+docker run -d --name humpyard -p 127.0.0.1:8080:8080 \
   -v "$PWD/config.toml:/etc/humpyard/config.toml:ro" \
   -v humpyard-data:/data \
   -e GROQ_API_KEY -e OPENROUTER_API_KEY \
@@ -34,7 +35,9 @@ docker run -d --name humpyard -p 8080:8080 \
 ```
 
 In the config, set `listen = "0.0.0.0:8080"` (inside the container the default loopback address is
-unreachable) and the ledger path to `/data/ledger.db` so usage survives upgrades.
+unreachable; `quickstart.toml` already does) and the ledger path to `/data/ledger.db` so usage
+survives upgrades. The command publishes the port on `127.0.0.1` only; drop that prefix (and add
+virtual keys first) to reach it from other machines.
 
 - The image is distroless, runs as a non-root user (65532), has no shell, config or secrets, and is
   about 70 MB. `docker stop` triggers the graceful shutdown (the default stop timeout of 10 s is

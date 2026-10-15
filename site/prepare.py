@@ -47,8 +47,9 @@ def main() -> None:
             shutil.copy(asset, dest)
     # The example configs as pages, so they are readable and searchable on the site.
     examples = OUT / "examples.md"
-    parts = ["# Example configs\n\nCopy and adapt. Both load and validate as shipped.\n"]
+    parts = ["# Example configs\n\nCopy and adapt. They load and validate as shipped.\n"]
     for name, blurb in (
+        ("quickstart.toml", "The smallest useful config: one provider, one model. Used by the README quick start."),
         ("config.toml", "The general example: providers, targets, routes, keys, budgets, health."),
         ("auto-routing.toml", "One `auto` model whose rules pick the pool by intent. See the [recipe](routing.md#auto-routing-recipe)."),
         ("budgets.toml", "Virtual keys with daily and monthly limits."),
