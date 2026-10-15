@@ -71,6 +71,10 @@ async fn rig() -> Rig {
         r#"listen = "127.0.0.1:0"
 [ledger]
 path = "{db}"
+# These tests are about statistics, not health: keep every target in the plan so a target that
+# failed is still tried (health skipping has its own tests in health_eligibility.rs).
+[health]
+skip_cold_targets = false
 {keys}
 [providers.pa]
 base_url = "{a_url}"

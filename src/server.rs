@@ -998,7 +998,9 @@ async fn handle(
     guard.decision.excluded_targets = excluded_targets(snap, &selection.name);
     let budget = check_budget(state, caller)?;
     guard.decision.budget = budget.map(|b| budget_label(b).to_string());
-    let plan = plan_route(
+    let Planned {
+        plan, cold_skipped, ..
+    } = plan_route(
         snap,
         selection.route,
         &selection.name,
@@ -1006,6 +1008,7 @@ async fn handle(
         budget,
         &info,
     )?;
+    guard.decision.cold_targets = cold_skipped;
     guard.decision.eligible_targets = plan
         .models
         .models_for(&Category::Any)
@@ -1246,8 +1249,34 @@ fn excluded_targets(snap: &Snapshot, route: &str) -> Vec<String> {
     excluded
 }
 
-/// Stage 4: let the routing policy narrow the targets, and a strict route drop the targets of
-/// classes it does not allow, before the algorithm sees any of them; nothing eligible is a refusal.
+/// A planned route plus what health did to it (ADR 0018).
+struct Planned {
+    plan: Plan,
+    /// Targets left out because every endpoint was cooling down and another target remained.
+    cold_skipped: Vec<String>,
+    /// Every eligible target was cold, so none was skipped: the route is tried as it would be without
+    /// health skipping (health never denies service).
+    fail_open: bool,
+}
+
+/// Whether every endpoint of `target` is cooling down. `probing` is warm: the cooldown has ended and
+/// the next request is the probe that lets the target recover.
+fn is_cold(snap: &Snapshot, target: &str) -> bool {
+    snap.targets
+        .iter()
+        .find(|(id, _)| id.as_str() == target)
+        .is_some_and(|(_, client)| {
+            let health = client.health();
+            !health.is_empty()
+                && health
+                    .iter()
+                    .all(|e| e.snapshot.state == crate::health::State::CoolingDown)
+        })
+}
+
+/// Stage 4: let the routing policy narrow the targets, a strict route drop the targets of classes it
+/// does not allow, and health skip cold targets while another remains, all before the algorithm sees
+/// any of them; nothing eligible is a refusal.
 fn plan_route(
     snap: &Snapshot,
     route: &Route,
@@ -1255,7 +1284,7 @@ fn plan_route(
     caller: Option<&KeyRecord>,
     budget: Option<BudgetState>,
     info: &RequestInfo,
-) -> Result<Plan, GatewayError> {
+) -> Result<Planned, GatewayError> {
     let context = PolicyContext {
         route: model,
         session_id: info.session_id.as_deref(),
@@ -1265,21 +1294,46 @@ fn plan_route(
             budget: budget.unwrap_or(BudgetState::Healthy),
         }),
     };
-    route
-        .plan(model, |target| {
-            class_allows(snap, model, target) && snap.policy.is_eligible(&context, target)
-        })
-        .ok_or_else(|| {
-            if budget == Some(BudgetState::Exhausted) {
-                GatewayError::BudgetExceeded(format!(
-                    "budget exhausted and route `{model}` has no free target to continue on"
-                ))
-            } else {
-                GatewayError::Unavailable(format!(
-                    "no eligible target for route `{model}`: all are excluded by routing policy"
-                ))
+    let eligible = |target: &str| {
+        class_allows(snap, model, target) && snap.policy.is_eligible(&context, target)
+    };
+    // The cold targets among those classes and policy leave eligible, in the route's order.
+    let mut cold: Vec<String> = Vec::new();
+    if snap.config.health.skip_cold_targets
+        && let Some(spec) = snap.config.routes.get(model)
+    {
+        for target in spec.target_refs() {
+            if eligible(target) && is_cold(snap, target) && !cold.iter().any(|c| c == target) {
+                cold.push(target.to_string());
             }
-        })
+        }
+    }
+    // First pass leaves cold targets out; if that leaves nothing, plan again with them (fail open).
+    let warm_plan = route.plan(model, |target| {
+        eligible(target) && !cold.iter().any(|c| c == target)
+    });
+    let (plan, cold_skipped, fail_open) = if let Some(plan) = warm_plan {
+        (Some(plan), cold, false)
+    } else {
+        let open = !cold.is_empty();
+        (route.plan(model, eligible), Vec::new(), open)
+    };
+    plan.map(|plan| Planned {
+        plan,
+        cold_skipped,
+        fail_open,
+    })
+    .ok_or_else(|| {
+        if budget == Some(BudgetState::Exhausted) {
+            GatewayError::BudgetExceeded(format!(
+                "budget exhausted and route `{model}` has no free target to continue on"
+            ))
+        } else {
+            GatewayError::Unavailable(format!(
+                "no eligible target for route `{model}`: all are excluded by routing policy"
+            ))
+        }
+    })
 }
 
 /// Stage 5: run the route's algorithm over the metered clients and settle the usage accounting.

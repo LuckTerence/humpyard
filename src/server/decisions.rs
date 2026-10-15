@@ -102,6 +102,7 @@ fn to_json(d: &Decision) -> Value {
         "budget": d.budget,
         "eligible_targets": d.eligible_targets,
         "excluded_targets": d.excluded_targets,
+        "cold_targets": d.cold_targets,
         "request": {
             "stream": d.stream,
             "prompt_tokens_estimate": d.prompt_tokens,

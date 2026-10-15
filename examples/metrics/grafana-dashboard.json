@@ -490,6 +490,39 @@
           }
         }
       ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Targets skipped for health per second",
+      "description": "A target whose endpoints were all cooling down was left out of a request's plan because another target remained. 0 when nothing is cold, and when every eligible target is cold (the route fails open).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, target) (rate(humpyard_health_skips_total[$__rate_interval]))",
+          "legendFormat": "{{route}} / {{target}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          }
+        }
+      ]
     }
   ]
 }

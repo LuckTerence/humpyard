@@ -79,6 +79,8 @@ pub struct HealthConfig {
     pub failure_threshold: u32,
     pub cooldown_secs: u64,
     pub max_cooldown_secs: u64,
+    /// Skip a target whose endpoints are all cooling down when another target remains (ADR 0018).
+    pub skip_cold_targets: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -234,6 +236,7 @@ impl Config {
                 failure_threshold: raw.health.failure_threshold,
                 cooldown_secs: raw.health.cooldown_secs,
                 max_cooldown_secs: raw.health.max_cooldown_secs,
+                skip_cold_targets: raw.health.skip_cold_targets,
             },
             budget: BudgetConfig {
                 restricted_at: raw.budget.restricted_at,

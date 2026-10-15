@@ -46,7 +46,9 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
 - `decision_retention_days` (top level, default 90): how long routing decisions and provider quota
   samples are kept; see [Keys, budgets and the ledger](budgets.md#the-decision-log).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,
-  `max_cooldown_secs`); `GET /v1/health` shows which endpoints are being skipped.
+  `max_cooldown_secs`) and `skip_cold_targets` (default true: leave a target whose endpoints are all
+  cooling down out of a request's plan when another target remains, never refusing a request for it);
+  `GET /v1/health` shows which endpoints are being skipped. See [Endpoint health](routing.md#endpoint-health).
 
 Logging is controlled by `RUST_LOG` (default `info`).
 
@@ -64,5 +66,5 @@ queued usage entries are written to the ledger before the process exits 0. A kil
 still lose entries that were queued but not yet written. `check-config` validates a file and reports
 dangling provider/target references and missing key variables.
 
-Not supported yet: health-driven target eligibility, database-managed keys, an admin API,
+Not supported yet: database-managed keys, an admin API,
 `previous_response_id` (returns 400).

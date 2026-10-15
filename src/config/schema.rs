@@ -86,6 +86,10 @@ pub(super) struct RawHealth {
     pub(super) cooldown_secs: u64,
     #[serde(default = "default_max_cooldown_secs")]
     pub(super) max_cooldown_secs: u64,
+    /// Leave a target whose endpoints are all cooling down out of a request's plan when another
+    /// target remains (ADR 0018). On by default.
+    #[serde(default = "default_skip_cold_targets")]
+    pub(super) skip_cold_targets: bool,
 }
 
 impl Default for RawHealth {
@@ -94,8 +98,13 @@ impl Default for RawHealth {
             failure_threshold: default_failure_threshold(),
             cooldown_secs: default_cooldown_secs(),
             max_cooldown_secs: default_max_cooldown_secs(),
+            skip_cold_targets: default_skip_cold_targets(),
         }
     }
+}
+
+fn default_skip_cold_targets() -> bool {
+    true
 }
 
 fn default_failure_threshold() -> u32 {

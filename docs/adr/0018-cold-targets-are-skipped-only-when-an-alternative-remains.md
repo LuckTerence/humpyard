@@ -1,6 +1,6 @@
 # 0018. Cold targets are skipped only when an alternative remains
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-15
 - Supersedes: none
 - Change: `openspec/changes/add-health-eligibility`
