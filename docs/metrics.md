@@ -96,9 +96,15 @@ and are attached to each release. They are examples to adapt, not part of the bi
 checks that every metric they use exists, so a rename in the gateway breaks the build rather than
 your dashboard.
 
-- `grafana-dashboard.json`: request rate, error ratio, latency percentiles, failovers, refusals,
-  spend and tokens, spend by key (needs `key_labels`), unhealthy endpoints, quota and ledger backlog.
-  Import it in Grafana and pick your Prometheus data source.
+- `grafana-dashboard.json`: the live view. Request rate, error ratio, latency percentiles,
+  failovers, refusals, spend and tokens, spend by key (needs `key_labels`), unhealthy endpoints, quota
+  and ledger backlog. Import it in Grafana and pick your Prometheus data source.
+- `grafana-summary-dashboard.json`: totals instead of rates. For the time range you pick (30 days by
+  default): requests, spend, cost per request, tokens, upstream error rate, p95 latency, failovers,
+  refusals, quota, plus per-day bars and breakdowns by route, key, target, status class, failover path
+  and refusal reason. It uses `increase()`, so a restart of humpyard does not break a total. It can
+  only look back as far as your Prometheus retention, so keep at least 30 days (Prometheus defaults to 15)
+  or pick a shorter range; for longer history use the ledger (`GET /v1/stats`).
 - `alert-rules.yaml` and `prometheusrule.yaml` (the same rules for the Prometheus Operator): error
   ratio, failover rate, an endpoint cooling down, ledger drops, stale or high quota, a rejected
   config reload, and humpyard not being scraped. Thresholds are starting points.

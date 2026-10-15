@@ -77,6 +77,7 @@ async fn every_metric_in_the_examples_exists() {
     let mut checked = 0;
     for file in [
         "grafana-dashboard.json",
+        "grafana-summary-dashboard.json",
         "alert-rules.yaml",
         "prometheusrule.yaml",
     ] {

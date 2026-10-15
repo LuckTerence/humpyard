@@ -129,4 +129,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" --repo "$GITHUB_REPOSITORY" \
             --title "humpyard $GITHUB_REF_NAME" --generate-notes \
             humpyard-v*.tar.gz SHA256SUMS \
-            examples/metrics/grafana-dashboard.json examples/metrics/alert-rules.yaml
+            examples/metrics/grafana-dashboard.json examples/metrics/grafana-summary-dashboard.json examples/metrics/alert-rules.yaml
