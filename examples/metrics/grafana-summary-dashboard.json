@@ -10,11 +10,11 @@
   "version": 1,
   "editable": true,
   "time": {
-    "from": "now-7d",
+    "from": "now-30d",
     "to": "now"
   },
   "refresh": "5m",
-  "description": "Totals over the selected time range (Prometheus increase()), not live rates. Counters reset when humpyard restarts, which increase() accounts for; the ledger (GET /v1/stats) is the long-term source of truth.",
+  "description": "Totals over the selected time range (Prometheus increase()), not live rates. The default range is 30 days, so Prometheus retention should be at least that; with less, pick a shorter range. Counters reset when humpyard restarts, which increase() accounts for; the ledger (GET /v1/stats) is the long-term source of truth.",
   "templating": {
     "list": [
       {
