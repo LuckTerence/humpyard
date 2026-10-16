@@ -37,8 +37,43 @@ Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://di
 | 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session | nothing | not yet proposed |
 | 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if item 2 shows switching is costly | item 2 | `add-auto-routing` 3.1 |
 | 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | item 2 | not yet proposed |
-| 3c | Content signals: local, deterministic detectors (private keys and common API-token patterns, `.env`-style secrets, PII-lite such as emails and Luhn-valid card numbers) that produce facts for selector rules (`when.contains`), so a request holding a secret can be routed to a private pool, and with a strict route can never reach a public one. Categories and counts only are recorded, never matches or positions. The default action is to route; `refuse` (a clear 400) is an opt-in per rule. No masking, no response filtering, no third-party calls | nothing (best after strict routes, shipped) | not yet proposed |
+| 3c | Free-pool routing, to replace ModelRelay: honor `Retry-After`, order a route's targets by observed latency, tags on targets with pools built from them, a bundled free-model catalog, then `migrate-modelrelay` and retirement. See [Replacing ModelRelay](#replacing-modelrelay) | capability eligibility and health skipping (shipped) | not yet proposed |
+| 3d | Content signals: local, deterministic detectors (private keys and common API-token patterns, `.env`-style secrets, PII-lite such as emails and Luhn-valid card numbers) that produce facts for selector rules (`when.contains`), so a request holding a secret can be routed to a private pool, and with a strict route can never reach a public one. Categories and counts only are recorded, never matches or positions. The default action is to route; `refuse` (a clear 400) is an opt-in per rule. No masking, no response filtering, no third-party calls | nothing (best after strict routes, shipped) | not yet proposed |
 | 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
+
+## Replacing ModelRelay
+
+ModelRelay is a separate Node.js proxy that humpyard can sit in front of today. In a typical setup it backs
+the **free pools**: "the fastest free model that has at least N tokens of context" and "the best free
+general model". Switching it off needs humpyard to do what those names mean, so the work is staged, and
+`migrate-modelrelay` is the last step, not the first:
+
+| # | Step | What it adds |
+|---|---|---|
+| 1 | Honor `Retry-After` | A 429 with a retry time cools the endpoint for that long, not a guessed cooldown (health skipping and capability eligibility are already shipped; "minimum context" is a declared `context_window`) |
+| 2 | Latency-ordered targets | A route orders its targets by recently observed latency (from the stats humpyard already keeps, no background prober), with some exploration so it does not lock onto one target. This is the latency half of the later "cost-aware ordering" |
+| 3 | Strengths and pools | A target can carry **strengths** such as `coding`, `reasoning`, `general`, `fast`, `agentic` (what ModelRelay calls tags); a pool route takes every target with a strength (resolved when the config loads, so it stays deterministic and explainable). See [Capabilities and strengths](#capabilities-and-strengths) |
+| 4 | A free-model catalog | Bundled facts (providers, models, context windows, tags) with an importer like `prices import`, so a pool does not have to be written by hand. Compiled independently from public data, never fetched while serving |
+| 5 | `migrate-modelrelay` | One command reads a ModelRelay setup and writes humpyard config; keys become `api_key_env` references and plaintext is never copied |
+| 6 | Retire ModelRelay | The operator's step, once a free pool has run on humpyard alone |
+
+### Capabilities and strengths
+
+Both describe what a model can do, in two tiers with different rules:
+
+- **Capabilities** are hard facts an operator or a public source can state: a context window, tool support,
+  image support. They are enforced: a target that cannot serve a request is removed from it, but only on
+  certainty ([shipped in 0.8.3](routing.md#capabilities)).
+- **Strengths** are soft judgments: what a model is good at. They **never remove a target on their own**.
+  They only decide which targets a pool contains and, later, how a route prefers among them, so a wrong
+  label costs a slightly worse pick, never a refused request.
+
+They are separate fields (capabilities stay on the endpoint, strengths go on the target), and neither is
+the request tag a client sends in an `x-humpyard-tag-*` header, which is about the request, not the model.
+"Strengths" is the working name (plain "tags" would collide with request tags); it is settled in the spec.
+
+Steps 2 and 3 are the real gap; the rest is plumbing and data. The first user is the free pools of the
+reference deployment, so the order follows what removing ModelRelay there needs.
 
 ## Planned: the operator surface
 
@@ -49,7 +84,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
 4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
 5. A read-only status page served by the binary, built on the same API.
-6. `migrate-modelrelay`: a command and bundled catalog to bring a ModelRelay setup across.
+6. `migrate-modelrelay`: a command and bundled catalog to bring a ModelRelay setup across. This is the last step of [Replacing ModelRelay](#replacing-modelrelay), which lists what must exist first.
 
 ## Later, and only on a measured trigger
 
@@ -59,7 +94,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   on a target no more public than the request, stores only a score and a reason code (never content),
   and shows counts and spread in `/v1/stats`; calibrated against a stronger judge before it is trusted.
   Requests are grouped by task class (matching rule, tools, size), not by their text.
-- **Cost-aware ordering** inside the set a route allows, advisory first, after weeks of statistics
+- **Cost-aware ordering** inside the set a route allows (its latency half moves up as step 2 of [Replacing ModelRelay](#replacing-modelrelay)), advisory first, after weeks of statistics
   and with quality signals in them; it needs exploration, so a model that scored badly once still
   gets looked at again.
 - **An external guardrail hook**, only on demand: one generic rule action that calls a configured HTTP service with a strict timeout and an explicit fail-open or fail-closed choice, so moderation and PII services (Lakera, Presidio, Bedrock and similar) can be used without humpyard embedding each. It puts network on the request path, so it needs its own ADR. Response-side filtering and prompt masking are not planned.
