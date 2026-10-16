@@ -52,10 +52,25 @@ general model". Switching it off needs humpyard to do what those names mean, so 
 |---|---|---|
 | 1 | Honor `Retry-After` | A 429 with a retry time cools the endpoint for that long, not a guessed cooldown (health skipping and capability eligibility are already shipped; "minimum context" is a declared `context_window`) |
 | 2 | Latency-ordered targets | A route orders its targets by recently observed latency (from the stats humpyard already keeps, no background prober), with some exploration so it does not lock onto one target. This is the latency half of the later "cost-aware ordering" |
-| 3 | Target tags and tag pools | A target can carry tags such as `coding`, `reasoning`, `general`, `fast`, `agentic`; a pool route takes every target with a tag (resolved when the config loads, so it stays deterministic and explainable). **These are about what a model is good at**, not the request tags clients send in `x-humpyard-tag-*` headers; a clearer name for them (for example `strengths`) is part of the spec |
+| 3 | Strengths and pools | A target can carry **strengths** such as `coding`, `reasoning`, `general`, `fast`, `agentic` (what ModelRelay calls tags); a pool route takes every target with a strength (resolved when the config loads, so it stays deterministic and explainable). See [Capabilities and strengths](#capabilities-and-strengths) |
 | 4 | A free-model catalog | Bundled facts (providers, models, context windows, tags) with an importer like `prices import`, so a pool does not have to be written by hand. Compiled independently from public data, never fetched while serving |
 | 5 | `migrate-modelrelay` | One command reads a ModelRelay setup and writes humpyard config; keys become `api_key_env` references and plaintext is never copied |
 | 6 | Retire ModelRelay | The operator's step, once a free pool has run on humpyard alone |
+
+### Capabilities and strengths
+
+Both describe what a model can do, in two tiers with different rules:
+
+- **Capabilities** are hard facts an operator or a public source can state: a context window, tool support,
+  image support. They are enforced: a target that cannot serve a request is removed from it, but only on
+  certainty ([shipped in 0.8.3](routing.md#capabilities)).
+- **Strengths** are soft judgments: what a model is good at. They **never remove a target on their own**.
+  They only decide which targets a pool contains and, later, how a route prefers among them, so a wrong
+  label costs a slightly worse pick, never a refused request.
+
+They are separate fields (capabilities stay on the endpoint, strengths go on the target), and neither is
+the request tag a client sends in an `x-humpyard-tag-*` header, which is about the request, not the model.
+"Strengths" is the working name (plain "tags" would collide with request tags); it is settled in the spec.
 
 Steps 2 and 3 are the real gap; the rest is plumbing and data. The first user is the free pools of the
 reference deployment, so the order follows what removing ModelRelay there needs.
