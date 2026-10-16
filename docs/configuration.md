@@ -10,7 +10,9 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   connection errors, timeouts, HTTP 429 and 5xx (not on other 4xx, and not once a stream has begun).
   Responses carry `x-humpyard-target` and `x-humpyard-provider` headers.
 - `[routes.<name>]`: a built-in Switchyard algorithm over targets, requested by clients as the
-  `model`: `passthrough`, `random` (weights, seed), `stage_router` (tool-result signals pick
+  `model`: `passthrough`, `random` (weights, seed), `fastest` (eligible targets ordered by observed speed, with
+  `explore`, `min_samples`, `max_age_secs`, `seed`; see [Fastest routes](routing.md#fastest-routes)),
+  `stage_router` (tool-result signals pick
   efficient vs capable), or `llm_classifier` (`capability` judges task difficulty, `escalation`
   latches to capable after repeated judge verdicts; both need a `judge` target). Send
   `x-switchyard-session-id` so per-session state (latches, holds) persists across requests.

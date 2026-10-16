@@ -14,6 +14,7 @@ use switchyard_libsy::{
 use switchyard_protocol::{Category, ModelId};
 
 use crate::config::{ClassifierMode, ClassifyTrigger, Config, FallbackOn, PickerMode, RouteSpec};
+use crate::latency::{Draws, Latency, Ranked, Settings};
 
 /// A servable name: the algorithm and the target groups it chooses among.
 pub struct Route {
@@ -23,8 +24,16 @@ pub struct Route {
     /// Random routes keep their weights: they follow target order, so removing a target needs
     /// them re-aligned.
     random: Option<RandomSpec>,
+    /// A `fastest` route orders its eligible targets by observed speed for every request.
+    fastest: Option<FastestSpec>,
     /// Which failures hand the request to the next target.
     fallback: FallbackOn,
+}
+
+/// How a `fastest` route weighs its targets, and the draws that decide when it explores.
+struct FastestSpec {
+    settings: Settings,
+    draws: Draws,
 }
 
 /// The part of a `random` route that must be re-aligned when targets are removed.
@@ -37,6 +46,8 @@ pub struct Plan {
     pub algorithm: Arc<dyn Algorithm>,
     pub models: RuntimeModels,
     pub fallback: FallbackOn,
+    /// For a `fastest` route, the order this request will try its targets in, and why.
+    pub ranking: Option<Ranked>,
 }
 
 pub struct Routes {
@@ -69,6 +80,7 @@ impl Route {
             algorithm,
             groups,
             random: None,
+            fastest: None,
             fallback: FallbackOn::default(),
         }
     }
@@ -94,6 +106,18 @@ impl Route {
     /// tier left empty is served by the other tier so limits degrade routing instead of failing
     /// it. Returns `None` when no target is eligible.
     pub fn plan(&self, route: &str, eligible: impl Fn(&str) -> bool) -> Option<Plan> {
+        self.plan_ranked(route, eligible, None)
+    }
+
+    /// Like [`Route::plan`]. For a `fastest` route, `latency` orders the eligible targets by observed
+    /// speed (ADR 0020); ordering ranks what is left after removal and never adds a target back.
+    /// Other routes ignore it.
+    pub fn plan_ranked(
+        &self,
+        route: &str,
+        eligible: impl Fn(&str) -> bool,
+        latency: Option<&Latency>,
+    ) -> Option<Plan> {
         let keep = |ids: &[ModelId]| -> Vec<ModelId> {
             ids.iter()
                 .filter(|id| eligible(id.as_str()))
@@ -147,11 +171,40 @@ impl Route {
             }
             _ => self.algorithm.clone(),
         };
+        let ranking = match (&self.fastest, latency) {
+            (Some(fastest), Some(latency)) => {
+                let names: Vec<String> = groups
+                    .get(&Category::Any)
+                    .map(|any| any.iter().map(|id| id.as_str().to_string()).collect())
+                    .unwrap_or_default();
+                let ranked = latency.rank(&names, &fastest.settings, || fastest.draws.next());
+                groups.insert(Category::Any, ids(&ranked.order));
+                Some(ranked)
+            }
+            _ => None,
+        };
         Some(Plan {
             algorithm,
             models: runtime_models(groups),
             fallback: self.fallback.clone(),
+            ranking,
         })
+    }
+
+    /// For a `fastest` route, the order its eligible targets would be tried in right now by speed alone
+    /// (no exploration, no draw consumed), for reports. `None` for other routes.
+    pub fn speed_order(&self, latency: &Latency, names: &[String]) -> Option<Ranked> {
+        let fastest = self.fastest.as_ref()?;
+        let settings = Settings {
+            explore: 0.0,
+            ..fastest.settings
+        };
+        Some(latency.rank(names, &settings, || 0.0))
+    }
+
+    /// The probability a `fastest` route explores, for reports.
+    pub fn explore(&self) -> Option<f64> {
+        self.fastest.as_ref().map(|f| f.settings.explore)
     }
 
     fn rebuilt_random(
@@ -182,12 +235,43 @@ fn algorithm_error(route: &str, error: impl std::fmt::Display) -> String {
     format!("route `{route}`: {error}")
 }
 
+/// A `fastest` route: a passthrough over its targets whose eligible set is ordered by speed per request.
+fn fastest_route(
+    targets: &[String],
+    explore: f64,
+    min_samples: u32,
+    max_age_secs: u64,
+    seed: Option<u64>,
+) -> Route {
+    let mut route = Route::new(
+        Arc::new(Passthrough),
+        HashMap::from([(Category::Any, ids(targets))]),
+    );
+    route.fastest = Some(FastestSpec {
+        settings: Settings {
+            explore,
+            min_samples,
+            max_age_ms: i64::try_from(max_age_secs.saturating_mul(1000)).unwrap_or(i64::MAX),
+        },
+        draws: Draws::new(seed),
+    });
+    route
+}
+
 fn build_route(name: &str, spec: &RouteSpec) -> Result<Route, String> {
     let mut route = match spec {
         RouteSpec::Passthrough { targets, .. } => Route::new(
             Arc::new(Passthrough),
             HashMap::from([(Category::Any, ids(targets))]),
         ),
+        RouteSpec::Fastest {
+            targets,
+            explore,
+            min_samples,
+            max_age_secs,
+            seed,
+            ..
+        } => fastest_route(targets, *explore, *min_samples, *max_age_secs, *seed),
         RouteSpec::Random {
             targets,
             weights,

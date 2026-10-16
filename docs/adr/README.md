@@ -33,6 +33,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0017](0017-strict-routes-exclude-disallowed-classes-before-routing.md) | Strict routes exclude disallowed classes before routing |
 | [0018](0018-cold-targets-are-skipped-only-when-an-alternative-remains.md) | Cold targets are skipped only when an alternative remains |
 | [0019](0019-declared-capabilities-remove-targets-that-cannot-serve-a-request.md) | Declared capabilities remove targets that cannot serve a request |
+| [0020](0020-latency-ordered-routes-rank-only-what-eligibility-leaves.md) | Latency-ordered routes rank only what eligibility leaves |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.

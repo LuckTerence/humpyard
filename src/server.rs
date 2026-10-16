@@ -37,6 +37,7 @@ use crate::config::Config;
 use crate::config::OverBudget;
 use crate::error::GatewayError;
 use crate::estimate::estimate_tokens;
+use crate::latency::Latency;
 use crate::ledger::Incapable;
 use crate::ledger::{Decision, Ledger};
 use crate::metering::{Accounting, CALL_ID_HEADER, CallContext, StreamTemplate};
@@ -654,7 +655,13 @@ async fn endpoint_health(State(state): State<Arc<AppState>>, headers: HeaderMap)
                     })
                 })
                 .collect();
-            json!({"target": target.to_string(), "endpoints": endpoints})
+            let figure = state.accounting.latency().figure(target.as_str());
+            json!({
+                "target": target.to_string(),
+                "current_latency_ms": figure.map(|f| f.ms),
+                "latency_samples": figure.map(|f| f.samples),
+                "endpoints": endpoints,
+            })
         })
         .collect();
     let reload = state.reload.lock().clone();
@@ -1011,10 +1018,13 @@ async fn handle(
         snap,
         selection.route,
         &selection.name,
-        caller,
-        budget,
-        &info,
-        &features,
+        &PlanInput {
+            caller,
+            budget,
+            info: &info,
+            features: &features,
+            latency: Some(state.accounting.latency()),
+        },
     )
     .map_err(|failure| {
         guard.decision.incapable_targets = failure.incapable;
@@ -1022,6 +1032,10 @@ async fn handle(
     })?;
     guard.decision.cold_targets = cold_skipped;
     guard.decision.incapable_targets = incapable;
+    guard.decision.ranking = plan.ranking.as_ref().map(|ranked| crate::ledger::Ranking {
+        order: ranked.order.clone(),
+        reason: ranked.reason.as_str().to_string(),
+    });
     guard.decision.eligible_targets = plan
         .models
         .models_for(&Category::Any)
@@ -1369,6 +1383,17 @@ fn is_cold(snap: &Snapshot, target: &str) -> bool {
         })
 }
 
+/// What planning needs to know about one request besides the route.
+#[derive(Clone, Copy)]
+struct PlanInput<'a> {
+    caller: Option<&'a KeyRecord>,
+    budget: Option<BudgetState>,
+    info: &'a RequestInfo,
+    features: &'a Features,
+    /// Orders a `fastest` route's targets; `None` leaves the written order (explain does not explore).
+    latency: Option<&'a Latency>,
+}
+
 /// Stage 4: let the routing policy narrow the targets, a strict route drop the targets of classes it
 /// does not allow, and health skip cold targets while another remains, all before the algorithm sees
 /// any of them; nothing eligible is a refusal.
@@ -1376,11 +1401,15 @@ fn plan_route(
     snap: &Snapshot,
     route: &Route,
     model: &str,
-    caller: Option<&KeyRecord>,
-    budget: Option<BudgetState>,
-    info: &RequestInfo,
-    features: &Features,
+    input: &PlanInput,
 ) -> Result<Planned, PlanFailure> {
+    let PlanInput {
+        caller,
+        budget,
+        info,
+        features,
+        latency,
+    } = *input;
     let context = PolicyContext {
         route: model,
         session_id: info.session_id.as_deref(),
@@ -1422,14 +1451,20 @@ fn plan_route(
         }
     }
     // First pass leaves cold targets out; if that leaves nothing, plan again with them (fail open).
-    let warm_plan = route.plan(model, |target| {
-        eligible(target) && !cold.iter().any(|c| c == target)
-    });
+    let warm_plan = route.plan_ranked(
+        model,
+        |target| eligible(target) && !cold.iter().any(|c| c == target),
+        latency,
+    );
     let (plan, cold_skipped, fail_open) = if let Some(plan) = warm_plan {
         (Some(plan), cold, false)
     } else {
         let open = !cold.is_empty();
-        (route.plan(model, eligible), Vec::new(), open)
+        (
+            route.plan_ranked(model, eligible, latency),
+            Vec::new(),
+            open,
+        )
     };
     if let Some(plan) = plan {
         return Ok(Planned {

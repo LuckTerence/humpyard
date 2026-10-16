@@ -104,6 +104,14 @@ in an ADR (`docs/adr/`) in the same change.
     `capability_never_adds_a_target_to_a_strict_route`); see
     [ADR-0019](adr/0019-declared-capabilities-remove-targets-that-cannot-serve-a-request.md).
 
+20. **Ordering by speed ranks only what eligibility left.** A `fastest` route orders the targets that
+    remain after class, policy, capability and health removal; it never adds a removed target back however
+    fast its figure, and only answered attempts update a figure (a failure is never a speed sample).
+    *Enforced by* `tests/latency_ordering.rs`
+    (`ordering_never_brings_back_a_target_that_eligibility_removed`,
+    `a_failed_attempt_is_not_a_speed_sample_and_the_request_falls_over`); see
+    [ADR-0020](adr/0020-latency-ordered-routes-rank-only-what-eligibility-leaves.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only
