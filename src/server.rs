@@ -37,6 +37,7 @@ use crate::config::Config;
 use crate::config::OverBudget;
 use crate::error::GatewayError;
 use crate::estimate::estimate_tokens;
+use crate::ledger::Incapable;
 use crate::ledger::{Decision, Ledger};
 use crate::metering::{Accounting, CALL_ID_HEADER, CallContext, StreamTemplate};
 use crate::num::f64_from_u64;
@@ -596,7 +597,7 @@ async fn count_tokens(
             caller.as_ref(),
             &decoded.model,
             stream,
-            request_features(&decoded.llm_request, &snap.selectors),
+            request_features(&decoded.llm_request, &snap.selectors, &snap.config),
             &selector_headers(&headers),
             &info,
         )?;
@@ -969,7 +970,7 @@ async fn handle(
     } = decode(format, raw)?;
     let info = request_info(headers);
     let stream = body["stream"].as_bool().unwrap_or(false);
-    let features = request_features(&llm_request, &snap.selectors);
+    let features = request_features(&llm_request, &snap.selectors, &snap.config);
     guard.decision.requested_model.clone_from(&model);
     guard.decision.stream = stream;
     guard.decision.prompt_tokens = features.prompt_tokens;
@@ -999,7 +1000,10 @@ async fn handle(
     let budget = check_budget(state, caller)?;
     guard.decision.budget = budget.map(|b| budget_label(b).to_string());
     let Planned {
-        plan, cold_skipped, ..
+        plan,
+        cold_skipped,
+        incapable,
+        ..
     } = plan_route(
         snap,
         selection.route,
@@ -1007,8 +1011,14 @@ async fn handle(
         caller,
         budget,
         &info,
-    )?;
+        &features,
+    )
+    .map_err(|failure| {
+        guard.decision.incapable_targets = failure.incapable;
+        failure.error
+    })?;
     guard.decision.cold_targets = cold_skipped;
+    guard.decision.incapable_targets = incapable;
     guard.decision.eligible_targets = plan
         .models
         .models_for(&Category::Any)
@@ -1090,16 +1100,22 @@ fn authorize<'a>(
 fn request_features(
     llm_request: &switchyard_protocol::LlmRequest,
     selectors: &Selectors,
+    config: &Config,
 ) -> Features {
-    let prompt_tokens = if selectors.needs_prompt_estimate() {
-        encode_request(llm_request, WireFormat::OpenAiChat)
-            .ok()
-            .map(|body| estimate_tokens(&body))
+    // The prompt is measured only when a rule needs the ordinary estimate or an endpoint declares a
+    // context window (which needs the low one, ADR 0019); otherwise no request pays for it.
+    let want_estimate = selectors.needs_prompt_estimate();
+    let want_low = config.declares_context_windows();
+    let body = if want_estimate || want_low {
+        encode_request(llm_request, WireFormat::OpenAiChat).ok()
     } else {
         None
     };
     Features {
-        prompt_tokens,
+        // Both estimates come from the same body, so whenever it is measured both are recorded: the
+        // decision then carries the ordinary estimate for tuning the low one (docs/routing.md).
+        prompt_tokens: body.as_ref().map(estimate_tokens),
+        prompt_tokens_low: body.as_ref().map(crate::estimate::estimate_tokens_low),
         tools: !llm_request.tools.is_empty(),
         images: llm_request.messages.iter().any(|message| {
             message
@@ -1249,9 +1265,57 @@ fn excluded_targets(snap: &Snapshot, route: &str) -> Vec<String> {
     excluded
 }
 
+/// Why no endpoint of `target` can serve a request with `features`, or `None` when one can: tools,
+/// images, or a prompt certainly larger than every declared context window (ADR 0019). An endpoint
+/// that declares nothing is capable, so an undeclared config removes nothing.
+fn incapable_reason(snap: &Snapshot, target: &str, features: &Features) -> Option<&'static str> {
+    let endpoints = snap.config.targets.get(target)?;
+    let mut first = None;
+    for endpoint in endpoints {
+        let reason = if features.tools && endpoint.tools == Some(false) {
+            Some("tools")
+        } else if features.images && endpoint.vision == Some(false) {
+            Some("vision")
+        } else if let (Some(window), Some(low)) =
+            (endpoint.context_window, features.prompt_tokens_low)
+            && low > window
+        {
+            Some("context")
+        } else {
+            None
+        };
+        first.get_or_insert(reason?);
+    }
+    first
+}
+
+/// The sentence explaining why a target was removed for capability, for the refusal message.
+fn incapable_sentence(incapable: &Incapable, features: &Features) -> String {
+    let why = match incapable.reason.as_str() {
+        "tools" => "the request uses tools but its endpoints declare tools = false".to_string(),
+        "vision" => {
+            "the request carries images but its endpoints declare vision = false".to_string()
+        }
+        _ => format!(
+            "the prompt is at least about {} tokens, more than its declared context_window",
+            features.prompt_tokens_low.unwrap_or(0)
+        ),
+    };
+    format!("`{}`: {why}", incapable.target)
+}
+
+/// Planning failed: the error to answer with, and the targets capability removed (recorded on the
+/// decision even when the request is refused).
+struct PlanFailure {
+    error: GatewayError,
+    incapable: Vec<Incapable>,
+}
+
 /// A planned route plus what health did to it (ADR 0018).
 struct Planned {
     plan: Plan,
+    /// Targets removed because none of their endpoints could serve the request (ADR 0019).
+    incapable: Vec<Incapable>,
     /// Targets left out because every endpoint was cooling down and another target remained.
     cold_skipped: Vec<String>,
     /// Every eligible target was cold, so none was skipped: the route is tried as it would be without
@@ -1284,7 +1348,8 @@ fn plan_route(
     caller: Option<&KeyRecord>,
     budget: Option<BudgetState>,
     info: &RequestInfo,
-) -> Result<Planned, GatewayError> {
+    features: &Features,
+) -> Result<Planned, PlanFailure> {
     let context = PolicyContext {
         route: model,
         session_id: info.session_id.as_deref(),
@@ -1294,10 +1359,27 @@ fn plan_route(
             budget: budget.unwrap_or(BudgetState::Healthy),
         }),
     };
-    let eligible = |target: &str| {
+    let base = |target: &str| {
         class_allows(snap, model, target) && snap.policy.is_eligible(&context, target)
     };
-    // The cold targets among those classes and policy leave eligible, in the route's order.
+    // Targets none of whose endpoints can serve this request, among those classes and policy leave
+    // eligible, in the route's order (ADR 0019). They are removed before health is consulted.
+    let mut incapable: Vec<Incapable> = Vec::new();
+    if let Some(spec) = snap.config.routes.get(model) {
+        for target in spec.target_refs() {
+            if base(target)
+                && !incapable.iter().any(|i| i.target == target)
+                && let Some(reason) = incapable_reason(snap, target, features)
+            {
+                incapable.push(Incapable {
+                    target: target.to_string(),
+                    reason: reason.to_string(),
+                });
+            }
+        }
+    }
+    let eligible = |target: &str| base(target) && !incapable.iter().any(|i| i.target == target);
+    // The cold targets among those capable, in the route's order.
     let mut cold: Vec<String> = Vec::new();
     if snap.config.health.skip_cold_targets
         && let Some(spec) = snap.config.routes.get(model)
@@ -1318,22 +1400,35 @@ fn plan_route(
         let open = !cold.is_empty();
         (route.plan(model, eligible), Vec::new(), open)
     };
-    plan.map(|plan| Planned {
-        plan,
-        cold_skipped,
-        fail_open,
-    })
-    .ok_or_else(|| {
-        if budget == Some(BudgetState::Exhausted) {
-            GatewayError::BudgetExceeded(format!(
-                "budget exhausted and route `{model}` has no free target to continue on"
-            ))
-        } else {
-            GatewayError::Unavailable(format!(
-                "no eligible target for route `{model}`: all are excluded by routing policy"
-            ))
-        }
-    })
+    if let Some(plan) = plan {
+        return Ok(Planned {
+            plan,
+            incapable,
+            cold_skipped,
+            fail_open,
+        });
+    }
+    // Nothing is left. If capability alone emptied the route, say why (known before any upstream
+    // call); otherwise it is the budget or the routing policy.
+    let error = if !incapable.is_empty() && route.plan(model, base).is_some() {
+        let reasons: Vec<String> = incapable
+            .iter()
+            .map(|i| incapable_sentence(i, features))
+            .collect();
+        GatewayError::NoCapableTarget(format!(
+            "no target of route `{model}` can serve this request: {}",
+            reasons.join("; ")
+        ))
+    } else if budget == Some(BudgetState::Exhausted) {
+        GatewayError::BudgetExceeded(format!(
+            "budget exhausted and route `{model}` has no free target to continue on"
+        ))
+    } else {
+        GatewayError::Unavailable(format!(
+            "no eligible target for route `{model}`: all are excluded by routing policy"
+        ))
+    };
+    Err(PlanFailure { error, incapable })
 }
 
 /// Stage 5: run the route's algorithm over the metered clients and settle the usage accounting.

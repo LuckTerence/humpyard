@@ -1327,6 +1327,55 @@
           "range": false
         }
       ]
+    },
+    {
+      "id": 26,
+      "type": "bargauge",
+      "title": "Capability removals by target and reason",
+      "description": "Requests in which a target was left out of the plan because none of its endpoints could serve the request.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 40,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "namePlacement": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (target, reason) (increase(humpyard_capability_skips_total[$__range]))",
+          "legendFormat": "{{target}} ({{reason}})",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ]
     }
   ]
 }

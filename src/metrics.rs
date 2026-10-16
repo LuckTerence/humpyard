@@ -24,11 +24,15 @@ const BUCKETS_MS: [u64; 12] = [
     50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 20_000, 30_000, 60_000, 120_000,
 ];
 
+/// Why a target was removed for capability (ADR 0019).
+const CAPABILITY_REASONS: [&str; 3] = ["tools", "vision", "context"];
+
 /// Client protocols a request can arrive on (the decision's `format`).
 const PROTOCOLS: [&str; 3] = ["openai_chat", "openai_responses", "anthropic_messages"];
 
 /// Outcomes that mean the gateway refused the request before any upstream call.
-const REFUSALS: [&str; 6] = [
+const REFUSALS: [&str; 7] = [
+    "no_capable_target",
     "unauthorized",
     "forbidden",
     "budget_exhausted",
@@ -330,6 +334,7 @@ pub struct Metrics {
     failovers: Owned,
     blocked: Owned,
     skips: Owned,
+    capability: Owned,
     refusals: Owned,
     reloads: Owned,
 }
@@ -395,6 +400,13 @@ impl Metrics {
                 &["route", "target"],
                 false,
             ),
+            capability: Owned::new(
+                "capability_skips_total",
+                "Requests in which a target was removed from the plan because none of its endpoints could serve the request, by reason (tools, vision, context).",
+                Kind::Counter,
+                &["route", "target", "reason"],
+                false,
+            ),
             refusals: Owned::new(
                 "refusals_total",
                 "Requests the gateway refused before any upstream call, by reason.",
@@ -452,6 +464,7 @@ impl Metrics {
         }
         self.observe_failovers(&route, d);
         self.observe_health_skips(&route, d);
+        self.observe_capability_skips(&route, d);
         // A strict route that failed after calling its allowed targets: the excluded ones are the
         // fallback it did not take.
         if !d.excluded_targets.is_empty()
@@ -465,6 +478,20 @@ impl Metrics {
             let mut labels = vec![d.outcome.clone()];
             labels.extend(key);
             self.refusals.add(&labels, 1);
+        }
+    }
+
+    fn observe_capability_skips(&self, route: &str, d: &Decision) {
+        let vocab = self.vocab.read();
+        for incapable in &d.incapable_targets {
+            self.capability.add(
+                &[
+                    route.to_string(),
+                    pick(&vocab.targets, Some(&incapable.target)),
+                    fixed(&CAPABILITY_REASONS, &incapable.reason),
+                ],
+                1,
+            );
         }
     }
 
@@ -553,6 +580,7 @@ impl Metrics {
             &self.failovers,
             &self.blocked,
             &self.skips,
+            &self.capability,
             &self.refusals,
             &self.reloads,
         ]

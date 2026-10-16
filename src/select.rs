@@ -16,6 +16,9 @@ pub const TAG_HEADER_PREFIX: &str = "x-humpyard-tag-";
 pub struct Features {
     /// Estimated prompt tokens; `None` when not computed (it is only computed when a rule needs it).
     pub prompt_tokens: Option<u64>,
+    /// A deliberately low estimate (a lower bound), for capability eligibility (ADR 0019); `None` when
+    /// no endpoint declares a context window.
+    pub prompt_tokens_low: Option<u64>,
     pub tools: bool,
     pub images: bool,
 }
@@ -521,6 +524,7 @@ mod tests {
                 prompt_tokens: tokens,
                 tools,
                 images,
+                ..Features::default()
             };
             f
         };

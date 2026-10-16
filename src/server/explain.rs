@@ -116,6 +116,7 @@ fn plan_report(
             .map(|name| target_report(snap, name, recent))
             .collect(),
     );
+    report["incapable_targets"] = json!(planned.incapable);
     report["health_skipped_targets"] = json!(planned.cold_skipped);
     report["health_fail_open"] = json!(planned.fail_open);
     class_report(report, snap, route, models);
@@ -204,6 +205,13 @@ fn explain(
 ) -> Value {
     let header_facts = request.header_facts();
     let info = request.request_info();
+    // The caller's `prompt_tokens` stands for both estimates: it is the best number the caller has.
+    let features = Features {
+        prompt_tokens: request.prompt_tokens,
+        prompt_tokens_low: request.prompt_tokens,
+        tools: request.tools,
+        images: request.images,
+    };
     let facts = Facts {
         model: &request.model,
         key: caller.map(|k| k.id.as_str()),
@@ -212,11 +220,7 @@ fn explain(
         task: request.task.as_deref(),
         subagent: request.subagent,
         stream: request.stream,
-        features: Features {
-            prompt_tokens: request.prompt_tokens,
-            tools: request.tools,
-            images: request.images,
-        },
+        features,
     };
     let permitted = |route: &str| caller.is_none_or(|key| key.may_use(route));
     let trace = snap.selectors.trace(&facts, permitted);
@@ -278,11 +282,12 @@ fn explain(
     };
     report["budget"] = json!(budget.map(budget_name));
     let route = snap.routes.get(&route_name);
-    match route.map(|r| plan_route(snap, r, &route_name, caller, budget, &info)) {
+    match route.map(|r| plan_route(snap, r, &route_name, caller, budget, &info, &features)) {
         Some(Ok(planned)) => plan_report(&mut report, snap, &route_name, &planned, recent),
-        Some(Err(error)) => {
-            report["outcome"] = json!(error.outcome());
-            report["message"] = json!(error.to_string());
+        Some(Err(failure)) => {
+            report["outcome"] = json!(failure.error.outcome());
+            report["message"] = json!(failure.error.to_string());
+            report["incapable_targets"] = json!(failure.incapable);
         }
         None => {
             report["outcome"] = json!("unknown_model");

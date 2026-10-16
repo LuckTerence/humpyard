@@ -24,6 +24,13 @@ pub struct Attempt {
     pub class: Option<String>,
 }
 
+/// A target removed for capability, and why: `tools`, `vision` or `context`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Incapable {
+    pub target: String,
+    pub reason: String,
+}
+
 /// What the router decided for one request, and how it went.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Decision {
@@ -48,6 +55,8 @@ pub struct Decision {
     /// Targets skipped for this request because every endpoint was cooling down and another target
     /// remained (ADR 0018).
     pub cold_targets: Vec<String>,
+    /// Targets removed because none of their endpoints could serve the request (ADR 0019).
+    pub incapable_targets: Vec<Incapable>,
     pub stream: bool,
     pub prompt_tokens: Option<u64>,
     pub tools: bool,
@@ -119,6 +128,21 @@ pub(super) async fn migrate_v4(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// v6: the targets removed for capability. Old rows read as none.
+pub(super) async fn migrate_v6(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let has: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM pragma_table_info('decisions') WHERE name = 'incapable_targets'",
+    )
+    .fetch_one(pool)
+    .await?;
+    if has == 0 {
+        sqlx::query("ALTER TABLE decisions ADD COLUMN incapable_targets TEXT")
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
 /// v5: the targets skipped for health. Old rows read as none.
 pub(super) async fn migrate_v5(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let has: i64 = sqlx::query_scalar(
@@ -183,7 +207,7 @@ pub(super) async fn insert_batch(pool: &SqlitePool, batch: &[Decision]) -> Resul
             "INSERT INTO decisions (request_id, ts_ms, key_id, session_id, format, requested_model, \
              route, rule, source, skipped_rules, budget, eligible_targets, stream, prompt_tokens, \
              tools, images, attempts, status, outcome, message, served_target, served_provider, \
-             latency_ms, excluded_targets, cold_targets) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25)",
+             latency_ms, excluded_targets, cold_targets, incapable_targets) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)",
         )
         .bind(&d.request_id)
         .bind(d.ts_ms)
@@ -210,6 +234,7 @@ pub(super) async fn insert_batch(pool: &SqlitePool, batch: &[Decision]) -> Resul
         .bind(to_i64(d.latency_ms))
         .bind(json_list(&d.excluded_targets))
         .bind(json_list(&d.cold_targets))
+        .bind(json_list(&d.incapable_targets))
         .execute(&mut *tx)
         .await?;
     }
@@ -279,6 +304,10 @@ pub(super) async fn query(
                 .unwrap_or_default(),
             cold_targets: row
                 .get::<Option<String>, _>("cold_targets")
+                .and_then(|json| serde_json::from_str(&json).ok())
+                .unwrap_or_default(),
+            incapable_targets: row
+                .get::<Option<String>, _>("incapable_targets")
                 .and_then(|json| serde_json::from_str(&json).ok())
                 .unwrap_or_default(),
         })

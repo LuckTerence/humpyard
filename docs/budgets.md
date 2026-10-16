@@ -73,6 +73,11 @@ humpyard prices check  --config config.toml --json
 humpyard prices check  --config config.toml --provider opencode --source models-dev:opencode-go
 ```
 
+`import` also proposes each endpoint's `context_window`, `tools` and `vision` when the source states them
+(`limit.context`, `tool_call` and image input), as a line to paste into the endpoint; `check` reports a
+declaration the source contradicts as drift, and an undeclared capability as a suggestion only. See
+[Capabilities](routing.md#capabilities).
+
 A source is `models-dev:<provider id>`, using the open [models.dev](https://models.dev) dataset (for
 example `opencode-go`, `openrouter`, `groq`). Models are matched by exact id; a provider with no
 `price_source` is skipped. The JSON report has a top-level `drift` flag and a `reports` list, one per
@@ -115,7 +120,7 @@ id (also returned as `x-humpyard-request-id`, and stored on the request's usage 
 join), the key, session and protocol, the model the client asked for, the route and selector rule
 that applied and whether it came from a `selector` or the `requested_model`, rules that matched but
 were skipped because the key may not use their route, the budget state, the targets that were
-eligible, the `excluded_targets` a strict route removed, the `cold_targets` skipped for health, request features (streaming, estimated prompt size when a rule needs it, tools, images),
+eligible, the `excluded_targets` a strict route removed, the `cold_targets` skipped for health, the `incapable_targets` removed for capability, request features (streaming, estimated prompt size when a rule needs it, tools, images),
 the **attempts** in order (target, provider, model, class, outcome such as `ok`, `rate_limit`,
 `timeout`, `server_error`, and milliseconds), `fallback_crossed_classes` (whether those attempts spanned
 more than one [target class](routing.md#target-classes)), the final status and `outcome`, the serving target and
