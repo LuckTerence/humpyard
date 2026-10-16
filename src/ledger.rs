@@ -3,6 +3,7 @@
 
 mod decisions;
 mod quota;
+mod sessions;
 mod stats;
 
 use std::collections::HashMap;
@@ -22,9 +23,10 @@ use tokio::task::JoinHandle;
 
 pub use decisions::{Attempt, Decision, DecisionQuery, Incapable};
 pub use quota::{QuotaPoint, QuotaQuery, QuotaSample};
-pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, percentile};
+pub use sessions::{SessionQuery, SessionScan, SessionStats, Switch};
+pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, TokenTotals, percentile};
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 /// How often the writer deletes decisions past their retention.
 const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 /// Decision retention when none is given, in days.
@@ -240,6 +242,11 @@ impl Ledger {
     /// Decisions matching `query`, newest first.
     pub async fn decisions(&self, query: &DecisionQuery) -> Result<Vec<Decision>, LedgerError> {
         decisions::query(&self.pool, query).await
+    }
+
+    /// Sessions, their cache use and the switches between endpoints, from the usage rows (read-only).
+    pub async fn session_scan(&self, query: &SessionQuery) -> Result<SessionScan, LedgerError> {
+        sessions::scan(&self.pool, query).await
     }
 
     /// Performance statistics over the decision log and usage rows (read-only).
@@ -471,6 +478,16 @@ async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     if version < 6 {
         // v6 (ADR 0019): which targets were removed because they could not serve the request.
         decisions::migrate_v6(pool).await?;
+    }
+    if version < 7 {
+        // v7: session analytics read usage rows by session and time; only rows that have a session id
+        // are indexed.
+        sqlx::query(
+            "CREATE INDEX IF NOT EXISTS usage_session_ts ON usage (session_id, ts_ms) \
+             WHERE session_id IS NOT NULL",
+        )
+        .execute(pool)
+        .await?;
     }
     if version < SCHEMA_VERSION {
         // PRAGMA does not take bound parameters; the value is a compile-time constant.

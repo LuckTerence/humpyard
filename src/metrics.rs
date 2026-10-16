@@ -367,7 +367,7 @@ impl Metrics {
             ),
             tokens: Owned::new(
                 "tokens_total",
-                "Tokens reported by providers, by direction.",
+                "Tokens reported by providers, by direction: input (fresh), output, cached_input and cache_creation.",
                 Kind::Counter,
                 &["route", "target", "direction"],
                 true,
@@ -529,7 +529,14 @@ impl Metrics {
             )
         };
         let key = self.key_label(e.key_id.as_deref());
-        for (direction, n) in [("input", e.input_tokens), ("output", e.output_tokens)] {
+        // `input` is the fresh part of the prompt; the cached and cache-creation parts are separate
+        // directions, so a dashboard can derive the cache-hit ratio (ADR 0016: fixed label values).
+        for (direction, n) in [
+            ("input", e.input_tokens),
+            ("output", e.output_tokens),
+            ("cached_input", e.cached_input_tokens),
+            ("cache_creation", e.cache_creation_tokens),
+        ] {
             let mut labels = vec![route.clone(), target.clone(), direction.to_string()];
             labels.extend(key.clone());
             self.tokens.add(&labels, n);

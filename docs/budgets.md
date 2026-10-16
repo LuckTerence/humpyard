@@ -159,10 +159,55 @@ Per group: `requests`, `attempts`, `outcomes` (attempts by class: `ok`, `rate_li
 `server_error`, `connection`, ...), `failures` and `failure_rate`, `fallbacks` and `fallback_rate`
 (requests that needed more than one attempt), `latency_ms` (`p50`, `p90`, `p99` over all attempts,
 nearest rank, so slow timeouts show in the tail) and, from the usage rows, the `answered` count with
-`avg_cost_usd` and `avg_tokens` per answered request. `truncated` is true when the window held more
+`avg_cost_usd` and `avg_tokens` per answered request, plus the group's `tokens` (`input`, `cached_input`,
+`cache_creation`, `output`) and `cache_hit_ratio` (see [Cache use and sessions](#cache-use-and-sessions)).
+`truncated` is true when the window held more
 than 50,000 decisions and only the newest were summarized. Small samples mislead: look at the counts
 before trusting a rate. `POST /v1/route/explain` adds the same recent numbers (last 24 hours: attempts,
 failure rate, p50) to each target it lists.
+
+### Cache use and sessions
+
+A model's prompt cache is a cost lever: input tokens served from cache are billed at a fraction of the
+fresh price, and a long agent session lives on it. A call's **prompt** is `input + cached_input +
+cache_creation` tokens (`input` is the fresh part), and **`cache_hit_ratio`** is `cached_input` over
+the prompt, `null` when there are no prompt tokens. Calls whose provider reported no usage are left out,
+so they cannot pull the ratio down; a provider that reports no cache usage shows `0.0`, which is what
+you were billed.
+
+Two more views answer "what does switching models in the middle of a session cost?". Both read the
+usage rows (so they reach back past the decision retention), only for your key, and only for answered
+calls that carry a **session id** (the id a client sends, for example in `x-switchyard-session-id`).
+
+```sh
+# Your costliest sessions: cost, calls, cache-hit ratio, the endpoints used in order, how many switches
+curl "localhost:8080/v1/stats?group_by=session&window=7d&order_by=cost&limit=20" -H "Authorization: Bearer $KEY"
+
+# What switching abandoned, and how many calls carried a session id at all
+curl "localhost:8080/v1/stats/switches?window=7d" -H "Authorization: Bearer $KEY"
+```
+
+`group_by=session` takes `limit` (1 to 100, default 20) and `order_by` (`cost` (default), `requests`,
+`switches` or `recent`); `sessions_total` and `answered_without_session` tell you what the list leaves out.
+
+A **switch** is two consecutive answered calls of one session on different `provider/model` endpoints,
+whether a route chose differently or a failover moved the call, because the cache lives with the
+endpoint. The switch report gives:
+
+- `coverage`: the share of answered calls with a session id. Look at this first: clients that send none
+  give no session view, and everything below covers only the calls that did.
+- `switches.warm_tokens_abandoned`: for each switch, what the call before it left cached (its cached
+  plus cache-creation tokens), which the new endpoint pays the fresh price for. It is an approximation,
+  not an invoice.
+- `switches.estimated_extra_cost_usd` and `spend.extra_share`: those tokens priced at the destination's
+  configured `input` minus `cached_input` price, as a share of your total spend. Switches to an
+  endpoint with no price are counted in `unpriced` and add nothing.
+- `by_pair`: the endpoint pairs that switch most.
+- `stayed` and `switched`: average calls and cost of sessions that did and did not switch. **Descriptive,
+  not causal**: sessions that switch are probably longer and harder.
+
+Use it to decide whether pinning sessions to a target would be worth building: if `extra_share` is a
+small fraction of spend, it is not.
 
 Not recorded: why a `stage_router` or classifier route picked a tier (the engine does not expose
 it; you see the target that served), and attempts that fail after a stream has begun.

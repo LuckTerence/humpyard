@@ -54,6 +54,35 @@ pub struct GroupStats {
     pub answered: u64,
     pub avg_cost_micro_usd: Option<f64>,
     pub avg_tokens: Option<f64>,
+    /// Token totals of the group's answered calls that reported usage (calls marked as missing
+    /// usage are left out, so they cannot pull the cache ratio down).
+    pub tokens: TokenTotals,
+}
+
+/// Token totals split the way providers bill them: a call's prompt is `input + cached_input +
+/// cache_creation`, where `input` excludes the cached part.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TokenTotals {
+    pub input: u64,
+    pub cached_input: u64,
+    pub cache_creation: u64,
+    pub output: u64,
+}
+
+impl TokenTotals {
+    /// The prompt tokens: fresh input plus the cached and cache-creation parts.
+    #[must_use]
+    pub fn prompt(&self) -> u64 {
+        self.input
+            .saturating_add(self.cached_input)
+            .saturating_add(self.cache_creation)
+    }
+
+    /// Cached input over prompt tokens, or `None` when there are no prompt tokens.
+    #[must_use]
+    pub fn cache_hit_ratio(&self) -> Option<f64> {
+        (self.prompt() > 0).then(|| ratio(self.cached_input, self.prompt()))
+    }
 }
 
 impl GroupStats {
@@ -161,7 +190,8 @@ pub(super) async fn compute(pool: &SqlitePool, q: &StatsQuery) -> Result<Stats, 
                 .filter(|(k, _)| *k != "ok")
                 .map(|(_, v)| *v)
                 .sum();
-            let (answered, cost, tokens) = costs.get(&group).copied().unwrap_or_default();
+            let sums = costs.get(&group).copied().unwrap_or_default();
+            let (answered, cost, tokens) = (sums.answered, sums.cost, sums.tokens);
             GroupStats {
                 p50_ms: percentile(&a.latencies, 50),
                 p90_ms: percentile(&a.latencies, 90),
@@ -174,6 +204,7 @@ pub(super) async fn compute(pool: &SqlitePool, q: &StatsQuery) -> Result<Stats, 
                 answered,
                 avg_cost_micro_usd: (answered > 0).then(|| ratio(cost, answered)),
                 avg_tokens: (answered > 0).then(|| ratio(tokens, answered)),
+                tokens: sums.totals,
                 group,
             }
         })
@@ -192,11 +223,21 @@ fn add_attempt(entry: &mut Accumulator, attempt: &Attempt) {
     entry.latencies.push(attempt.ms);
 }
 
-/// Answered requests, total cost and total tokens per group, from the usage rows.
+/// What the usage rows say about one group.
+#[derive(Clone, Copy, Debug, Default)]
+struct UsageSums {
+    answered: u64,
+    cost: u64,
+    tokens: u64,
+    totals: TokenTotals,
+}
+
+/// Answered requests, total cost and total tokens per group, and the token split of the calls that
+/// reported usage, from the usage rows.
 async fn cost_by_group(
     pool: &SqlitePool,
     q: &StatsQuery,
-) -> Result<HashMap<String, (u64, u64, u64)>, LedgerError> {
+) -> Result<HashMap<String, UsageSums>, LedgerError> {
     let column = match q.group_by {
         GroupBy::Route => "route",
         GroupBy::Target => "target",
@@ -205,7 +246,11 @@ async fn cost_by_group(
     // `column` is one of three constants above, never client input.
     let sql = format!(
         "SELECT {column} AS g, COUNT(*) AS answered, SUM(cost_micro_usd) AS cost, \
-         SUM(input_tokens + cached_input_tokens + cache_creation_tokens + output_tokens) AS tokens \
+         SUM(input_tokens + cached_input_tokens + cache_creation_tokens + output_tokens) AS tokens, \
+         SUM(CASE WHEN usage_missing = 0 THEN input_tokens ELSE 0 END) AS fresh, \
+         SUM(CASE WHEN usage_missing = 0 THEN cached_input_tokens ELSE 0 END) AS cached, \
+         SUM(CASE WHEN usage_missing = 0 THEN cache_creation_tokens ELSE 0 END) AS creation, \
+         SUM(CASE WHEN usage_missing = 0 THEN output_tokens ELSE 0 END) AS produced \
          FROM usage WHERE ts_ms >= ?1 AND kind = 'answer' AND (?2 IS NULL OR key_id = ?2) \
          AND (?3 IS NULL OR route = ?3) AND (?4 IS NULL OR target = ?4) GROUP BY g"
     );
@@ -221,11 +266,17 @@ async fn cost_by_group(
         .map(|r| {
             (
                 r.get::<String, _>("g"),
-                (
-                    from_i64(r.get::<i64, _>("answered")),
-                    from_i64(r.get::<i64, _>("cost")),
-                    from_i64(r.get::<i64, _>("tokens")),
-                ),
+                UsageSums {
+                    answered: from_i64(r.get::<i64, _>("answered")),
+                    cost: from_i64(r.get::<i64, _>("cost")),
+                    tokens: from_i64(r.get::<i64, _>("tokens")),
+                    totals: TokenTotals {
+                        input: from_i64(r.get::<i64, _>("fresh")),
+                        cached_input: from_i64(r.get::<i64, _>("cached")),
+                        cache_creation: from_i64(r.get::<i64, _>("creation")),
+                        output: from_i64(r.get::<i64, _>("produced")),
+                    },
+                },
             )
         })
         .collect())
