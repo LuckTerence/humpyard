@@ -72,6 +72,50 @@ fn the_documented_budget_example_is_a_valid_config() {
 }
 
 #[test]
+fn the_quick_start_config_needs_only_the_one_key_the_readme_passes() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/quickstart.toml");
+    // The README's docker command passes only GROQ_API_KEY; the config must not need another.
+    let out = Command::new(env!("CARGO_BIN_EXE_humpyard"))
+        .args(["check-config", path])
+        .env_remove("OPENROUTER_API_KEY")
+        .env("GROQ_API_KEY", "k")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // It runs in a container, where the default loopback address is unreachable from the host.
+    let text = std::fs::read_to_string(path).unwrap();
+    assert!(text.contains("listen = \"0.0.0.0:8080\""), "{text}");
+    let readme =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/README.md")).unwrap();
+    assert!(
+        readme.contains("-p 127.0.0.1:8080:8080") && readme.contains("quickstart.toml"),
+        "the README quick start publishes on loopback and uses the quick-start config"
+    );
+}
+
+#[test]
+fn the_general_example_config_is_valid() {
+    let out = Command::new(env!("CARGO_BIN_EXE_humpyard"))
+        .args([
+            "check-config",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/examples/config.toml"),
+        ])
+        .env("GROQ_API_KEY", "k")
+        .env("OPENROUTER_API_KEY", "k")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn keygen_prints_a_key_and_the_matching_hash_and_stores_nothing() {
     use sha2::{Digest, Sha256};
     let dir = std::env::temp_dir().join(format!("sc-keygen-{}", std::process::id()));

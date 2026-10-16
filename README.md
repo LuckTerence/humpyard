@@ -51,15 +51,26 @@ slow or expensive. humpyard is the **routing and policy layer** in front of your
 ## Quick start
 
 ```sh
-docker run -d -p 8080:8080 -e GROQ_API_KEY \
-  -v "$PWD/config.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.8.2
+curl -fsSLO https://raw.githubusercontent.com/gschaetz/humpyard/main/examples/quickstart.toml
+export GROQ_API_KEY=...        # your key; the config reads it from the environment
+
+docker run -d -p 127.0.0.1:8080:8080 -e GROQ_API_KEY \
+  -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.8.2
+
 curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
 ```
 
-No Docker? Download a binary from the [releases](https://github.com/gschaetz/humpyard/releases),
-or `cargo build --release`, then `humpyard serve --config config.toml`. A starting config is in
-[examples/config.toml](examples/config.toml).
+[`quickstart.toml`](examples/quickstart.toml) is one provider and one model (any OpenAI-compatible
+endpoint works), published on `127.0.0.1` only. It has no virtual keys, so keep it local until you add
+some. No keys and no network? [Try the demo](https://humpyard.dev/demo/) first.
+
+No Docker? Download a binary from the [releases](https://github.com/gschaetz/humpyard/releases)
+(check it against `SHA256SUMS`; on macOS a browser-downloaded binary may need
+`xattr -d com.apple.quarantine humpyard`), or `cargo build --release`, then
+`humpyard serve --config quickstart.toml`. That config listens on all interfaces because it is meant
+for the container, so set `listen = "127.0.0.1:8080"` if the machine is on a shared network. A fuller
+starting config, with failover across two providers, is in [examples/config.toml](examples/config.toml).
 
 ## Where to find what you need
 
