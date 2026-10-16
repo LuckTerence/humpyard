@@ -37,6 +37,7 @@ Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://di
 | 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session | nothing | not yet proposed |
 | 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if item 2 shows switching is costly | item 2 | `add-auto-routing` 3.1 |
 | 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | item 2 | not yet proposed |
+| 3c | Content signals: local, deterministic detectors (private keys and common API-token patterns, `.env`-style secrets, PII-lite such as emails and Luhn-valid card numbers) that produce facts for selector rules (`when.contains`), so a request holding a secret can be routed to a private pool, and with a strict route can never reach a public one. Categories and counts only are recorded, never matches or positions. The default action is to route; `refuse` (a clear 400) is an opt-in per rule. No masking, no response filtering, no third-party calls | nothing (best after strict routes, shipped) | not yet proposed |
 | 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
 
 ## Planned: the operator surface
@@ -61,6 +62,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
 - **Cost-aware ordering** inside the set a route allows, advisory first, after weeks of statistics
   and with quality signals in them; it needs exploration, so a model that scored badly once still
   gets looked at again.
+- **An external guardrail hook**, only on demand: one generic rule action that calls a configured HTTP service with a strict timeout and an explicit fail-open or fail-closed choice, so moderation and PII services (Lakera, Presidio, Bedrock and similar) can be used without humpyard embedding each. It puts network on the request path, so it needs its own ADR. Response-side filtering and prompt masking are not planned.
 - **A classifier-backed rule action**, if the decision log shows the catch-all route is too coarse.
 - **Quota per model**, if a provider publishes it; adapters for other providers' usage endpoints.
 - **A fuller admin GUI**, as an optional separate client of the admin API.
