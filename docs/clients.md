@@ -113,7 +113,7 @@ through the gateway. What was verified, with real paid models behind the routes:
   correctly over two turns.
 - **It sends no identity by default.** The requests carry the OpenAI JS SDK's user-agent and nothing
   else: no session id, agent id or metadata. Setting `compat.sendSessionAffinityHeaders: true` on a model
-  makes it send `session_id` and `x-session-affinity`, which humpyard reads as the session id (releases after 0.8.4),
+  makes it send `session_id` and `x-session-affinity`, which humpyard reads as the session id (from 0.8.5),
   so its agents appear in `group_by=session` and the switch report. Tell consumers apart with one gateway key each (and
   `allowed_routes`); the provider entry also accepts `headers`, so `x-humpyard-profile` or
   `x-humpyard-tag-*` can be added if rules should depend on them.

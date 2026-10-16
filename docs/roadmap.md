@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.8.4. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.5. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -23,6 +23,7 @@ Last updated: 2026-10-14. Latest release: 0.8.4. Community: [Discord](https://di
 | 0.8.2 | 2026-10-15 | Health-driven eligibility: a target whose endpoints are all cooling down is left out of a request's plan when another target remains, failing open so health still never denies service (`cold_targets` on decisions, `humpyard_health_skips_total`, `[health] skip_cold_targets`, ADR 0018) |
 | 0.8.3 | 2026-10-16 | Capability eligibility: endpoints declare `context_window`, `tools` and `vision`; a target that cannot serve a request is removed before routing, only on certainty (a declared limit, or a deliberately low prompt estimate), and a request nothing can serve is refused with 400 `no_capable_target` before any upstream call (`incapable_targets` on decisions, `humpyard_capability_skips_total`, `prices import` proposes the fields, ADR 0019); the README quick start is self-contained |
 | 0.8.4 | 2026-10-16 | Session and cache analytics: token totals and `cache_hit_ratio` on every statistics group, `group_by=session`, and `GET /v1/stats/switches` (cached tokens abandoned when a session changes endpoint, priced from the config, with session coverage), `cached_input` and `cache_creation` token directions in `/metrics`; read-only, it measures whether session stickiness is worth building |
+| 0.8.5 | 2026-10-16 | `session_id` and `x-session-affinity` are accepted as a session id when no recognized header carries one (so OpenClaw with session affinity on shows up in the session analytics); the example live dashboard aggregates its gauges so rollouts no longer duplicate series |
 
 ## Building now
 
