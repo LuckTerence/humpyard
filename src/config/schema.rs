@@ -239,6 +239,15 @@ pub struct Endpoint {
     /// USD per million tokens. Required on every endpoint when any key has a USD budget.
     #[serde(default)]
     pub price: Option<Price>,
+    /// The model's context window in tokens. Undeclared means unknown, which means capable (ADR 0019).
+    #[serde(default)]
+    pub context_window: Option<u64>,
+    /// Whether the model supports tool calls; `false` removes the target from requests that use tools.
+    #[serde(default)]
+    pub tools: Option<bool>,
+    /// Whether the model accepts images; `false` removes the target from requests that carry them.
+    #[serde(default)]
+    pub vision: Option<bool>,
 }
 
 /// Token prices in USD per million tokens (numerically equal to micro-USD per token).

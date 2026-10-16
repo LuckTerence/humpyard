@@ -1,6 +1,6 @@
 # 0019. Declared capabilities remove targets that cannot serve a request
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-15
 - Supersedes: none
 - Change: `openspec/changes/add-capability-eligibility`

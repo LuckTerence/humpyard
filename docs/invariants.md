@@ -93,6 +93,17 @@ in an ADR (`docs/adr/`) in the same change.
     `strict_routes_are_validated_when_the_config_loads`); see
     [ADR-0017](adr/0017-strict-routes-exclude-disallowed-classes-before-routing.md).
 
+19. **A target is removed for capability only on certainty, and only removed.** A target that cannot serve a
+    request (a declared `tools = false` with tools, `vision = false` with images, or a prompt whose
+    deliberately low estimate exceeds every declared window) is left out of the plan before the
+    algorithm runs; undeclared means capable; a borderline prompt is never removed; capability never
+    adds a target; a request no target can serve is refused with 400 `no_capable_target` before any
+    upstream call. *Enforced by* `tests/capability_eligibility.rs`
+    (`a_borderline_prompt_is_not_removed`, `an_endpoint_that_declares_nothing_is_capable`,
+    `a_request_nothing_can_serve_is_refused_before_any_upstream_call`,
+    `capability_never_adds_a_target_to_a_strict_route`); see
+    [ADR-0019](adr/0019-declared-capabilities-remove-targets-that-cannot-serve-a-request.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

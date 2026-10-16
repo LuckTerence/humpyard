@@ -245,6 +245,15 @@ impl Config {
         })
     }
 
+    /// Whether any endpoint declares a context window, so the gateway must estimate prompt sizes
+    /// even when no selector rule needs it (ADR 0019).
+    pub fn declares_context_windows(&self) -> bool {
+        self.targets
+            .values()
+            .flatten()
+            .any(|endpoint| endpoint.context_window.is_some())
+    }
+
     /// Route and target names clients may request, routes first.
     pub fn model_names(&self) -> Vec<&str> {
         self.routes

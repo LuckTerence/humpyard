@@ -8,6 +8,9 @@ use serde_json::Value;
 /// 2 to 3 for code, JSON and non-Latin scripts; the constant is the calibrated high-side choice
 /// (see `openspec/changes/archive/*-add-count-tokens/design.md`).
 const BYTES_PER_TOKEN: u64 = 3;
+/// UTF-8 bytes per token assumed by [`estimate_tokens_low`]: higher than any real tokenizer averages,
+/// so the resulting count is a lower bound.
+const LOW_BYTES_PER_TOKEN: u64 = 6;
 /// Chat templates add role markers and separators around every message.
 const TOKENS_PER_MESSAGE: u64 = 4;
 /// Priming tokens every conversation starts with.
@@ -31,6 +34,22 @@ pub fn estimate_tokens(body: &Value) -> u64 {
 }
 
 /// Estimated tokens for `bytes` of generated text, with the same conservative ratio.
+/// A deliberately LOW estimate of a request body's prompt tokens: real tokenizers average 2 to 5 bytes
+/// per token, so dividing by 6 and ignoring per-message markers stays below the true count. It is used
+/// to remove a target only when even this optimistic count exceeds its context window (ADR 0019); the
+/// ordinary estimate errs high and would wrongly remove targets that fit.
+#[must_use]
+pub fn estimate_tokens_low(body: &Value) -> u64 {
+    let mut bytes = 0_usize;
+    if let Some(messages) = body.get("messages").and_then(Value::as_array) {
+        bytes = messages.iter().map(text_bytes).sum();
+    }
+    if let Some(tools) = body.get("tools") {
+        bytes = bytes.saturating_add(tools.to_string().len());
+    }
+    u64::try_from(bytes).unwrap_or(u64::MAX) / LOW_BYTES_PER_TOKEN
+}
+
 #[must_use]
 pub fn tokens_for_bytes(bytes: usize) -> u64 {
     u64::try_from(bytes)

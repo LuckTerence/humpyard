@@ -43,6 +43,48 @@ pub struct PriceRecord {
     pub notes: Vec<String>,
 }
 
+/// What a source says a model can take (ADR 0019). A field the source does not state is `None`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Capability {
+    pub context_window: Option<u64>,
+    pub tools: Option<bool>,
+    pub vision: Option<bool>,
+}
+
+/// Both sides state a value and the values differ.
+fn differ<T: PartialEq>(declared: Option<T>, source: Option<T>) -> bool {
+    matches!((declared, source), (Some(a), Some(b)) if a != b)
+}
+
+impl Capability {
+    fn is_empty(&self) -> bool {
+        self.context_window.is_none() && self.tools.is_none() && self.vision.is_none()
+    }
+
+    /// Whether a declared value contradicts the source's. A field either side leaves unset cannot
+    /// contradict (an undeclared capability means "unknown, assume capable").
+    fn conflicts_with(&self, source: &Capability) -> bool {
+        differ(self.context_window, source.context_window)
+            || differ(self.tools, source.tools)
+            || differ(self.vision, source.vision)
+    }
+
+    /// The fields as they are written in an endpoint: `context_window = 128000, tools = true`.
+    fn text(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(window) = self.context_window {
+            parts.push(format!("context_window = {window}"));
+        }
+        if let Some(tools) = self.tools {
+            parts.push(format!("tools = {tools}"));
+        }
+        if let Some(vision) = self.vision {
+            parts.push(format!("vision = {vision}"));
+        }
+        parts.join(", ")
+    }
+}
+
 /// What a source says about one provider.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SourceData {
@@ -52,6 +94,9 @@ pub struct SourceData {
     pub records: BTreeMap<String, PriceRecord>,
     /// Models the source lists but whose price could not be used, with the reason.
     pub unusable: BTreeMap<String, String>,
+    /// What the source says each model can take, for models where it says anything (ADR 0019). Kept
+    /// apart from prices: a free model has no price but can still have a context window.
+    pub capabilities: BTreeMap<String, Capability>,
 }
 
 fn valid(value: &Value) -> Option<f64> {
@@ -114,6 +159,24 @@ fn parse_cost(cost: &Value) -> Result<PriceRecord, String> {
     Ok(record)
 }
 
+/// A model's capabilities as models.dev states them: `limit.context`, `tool_call` and an `image`
+/// among `modalities.input`. Anything missing or malformed stays unset, never guessed.
+fn parse_capability(model: &Value) -> Capability {
+    Capability {
+        context_window: model
+            .get("limit")
+            .and_then(|l| l.get("context"))
+            .and_then(Value::as_u64)
+            .filter(|window| *window > 0),
+        tools: model.get("tool_call").and_then(Value::as_bool),
+        vision: model
+            .get("modalities")
+            .and_then(|m| m.get("input"))
+            .and_then(Value::as_array)
+            .map(|inputs| inputs.iter().any(|i| i.as_str() == Some("image"))),
+    }
+}
+
 /// Reads one provider's prices out of a models.dev document.
 pub fn parse_models_dev(body: &str, provider_id: &str) -> Result<SourceData, PriceError> {
     let root: Value = serde_json::from_str(body)
@@ -133,6 +196,10 @@ pub fn parse_models_dev(body: &str, provider_id: &str) -> Result<SourceData, Pri
         ..SourceData::default()
     };
     for (id, model) in models {
+        let capability = parse_capability(model);
+        if !capability.is_empty() {
+            data.capabilities.insert(id.clone(), capability);
+        }
         match model.get("cost") {
             None | Some(Value::Null) => {
                 data.unusable
@@ -255,6 +322,19 @@ pub struct Row {
     pub configured: Option<Price>,
     pub source: Option<PriceRecord>,
     pub status: Status,
+    /// What the source says the model can take, when it says anything.
+    pub capability: Option<Capability>,
+    /// What the endpoint declares today.
+    pub declared: Capability,
+}
+
+impl Row {
+    /// A declared capability the source contradicts (unset on either side is not a conflict).
+    fn capability_conflict(&self) -> bool {
+        self.capability
+            .as_ref()
+            .is_some_and(|source| self.declared.conflicts_with(source))
+    }
 }
 
 fn approx(a: f64, b: f64) -> bool {
@@ -311,6 +391,12 @@ pub fn compare(config: &Config, provider: &str, data: &SourceData) -> Vec<Row> {
                 configured: endpoint.price.clone(),
                 source,
                 status,
+                capability: data.capabilities.get(&endpoint.model).cloned(),
+                declared: Capability {
+                    context_window: endpoint.context_window,
+                    tools: endpoint.tools,
+                    vision: endpoint.vision,
+                },
             });
         }
     }
@@ -319,7 +405,8 @@ pub fn compare(config: &Config, provider: &str, data: &SourceData) -> Vec<Row> {
 
 /// Whether anything needs attention (drift).
 pub fn has_drift(rows: &[Row]) -> bool {
-    rows.iter().any(|r| r.status != Status::Ok)
+    rows.iter()
+        .any(|r| r.status != Status::Ok || r.capability_conflict())
 }
 
 fn price_text(input: f64, output: f64, cached: Option<f64>) -> String {
@@ -409,6 +496,15 @@ pub fn render_snippet(rows: &[Row], source: &str, read_on: &str) -> String {
             }
             (None, _) => out.push_str("# NOT PROPOSED: the source does not list this model\n"),
         }
+        if let Some(capability) = &row.capability {
+            add(&mut out, format_args!("{}\n", capability.text()));
+            if row.declared != Capability::default() && row.declared != *capability {
+                add(
+                    &mut out,
+                    format_args!("#   currently: {}\n", row.declared.text()),
+                );
+            }
+        }
     }
     out
 }
@@ -443,9 +539,24 @@ pub fn render_report(rows: &[Row], source: &str, read_on: &str) -> String {
             (Status::Unusable(reason), _) => add(&mut out, format_args!("\n    {reason}")),
             _ => {}
         }
+        if row.capability_conflict()
+            && let Some(source) = &row.capability
+        {
+            add(
+                &mut out,
+                format_args!(
+                    "\n    capability differs: declared {}; source {}",
+                    row.declared.text(),
+                    source.text()
+                ),
+            );
+        }
         out.push('\n');
     }
-    let attention = rows.iter().filter(|r| r.status != Status::Ok).count();
+    let attention = rows
+        .iter()
+        .filter(|r| r.status != Status::Ok || r.capability_conflict())
+        .count();
     add(
         &mut out,
         format_args!(
@@ -477,7 +588,8 @@ pub fn report_json(rows: &[Row], source: &str, read_on: &str) -> Value {
         "source": source,
         "read_on": read_on,
         "drift": has_drift(rows),
-        "endpoints": rows.iter().map(|r| json!({
+        "endpoints": rows.iter().map(|r| {
+            let mut endpoint = json!({
             "target": r.target,
             "provider": r.provider,
             "model": r.model,
@@ -496,7 +608,26 @@ pub fn report_json(rows: &[Row], source: &str, read_on: &str) -> Value {
                 })).collect::<Vec<_>>(),
                 "notes": s.notes,
             })),
-        })).collect::<Vec<_>>(),
+            });
+            // Present only when the source states a capability, so reports for sources without any are
+            // unchanged.
+            if let Some(capability) = &r.capability {
+                endpoint["capability"] = json!({
+                    "source": {
+                        "context_window": capability.context_window,
+                        "tools": capability.tools,
+                        "vision": capability.vision,
+                    },
+                    "declared": {
+                        "context_window": r.declared.context_window,
+                        "tools": r.declared.tools,
+                        "vision": r.declared.vision,
+                    },
+                    "conflict": r.capability_conflict(),
+                });
+            }
+            endpoint
+        }).collect::<Vec<_>>(),
     })
 }
 

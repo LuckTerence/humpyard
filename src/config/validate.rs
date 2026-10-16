@@ -146,6 +146,11 @@ pub(super) fn validate(raw: &RawConfig) -> Result<(), ConfigError> {
             return Err(invalid(format!("target `{id}` has no endpoints")));
         }
         for endpoint in &target.endpoints {
+            if endpoint.context_window == Some(0) {
+                return Err(invalid(format!(
+                    "target `{id}`: context_window must be at least 1 token"
+                )));
+            }
             if !raw.providers.contains_key(&endpoint.provider) {
                 return Err(invalid(format!(
                     "target `{id}` names unknown provider `{}`",

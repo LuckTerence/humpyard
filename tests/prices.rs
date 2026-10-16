@@ -663,3 +663,126 @@ async fn import_without_flags_proposes_for_every_source_provider() {
     assert!(out.contains("models-dev:opencode-go") && out.contains("models-dev:other-provider"));
     assert_eq!(std::fs::read(&path).unwrap(), before);
 }
+
+// ---- capability proposals (ADR 0019) ----
+
+const CAPABILITY_FIXTURE: &str = r#"{
+  "prov": {"models": {
+    "vision-model": {"cost": {"input": 1.0, "output": 2.0},
+      "limit": {"context": 128000}, "tool_call": true, "modalities": {"input": ["text", "image"]}},
+    "text-model": {"cost": {"input": 0.5, "output": 1.0},
+      "limit": {"context": 32000}, "tool_call": false, "modalities": {"input": ["text"]}},
+    "free-model": {"limit": {"context": 64000}},
+    "bare-model": {"cost": {"input": 0.1, "output": 0.2}},
+    "bad-model": {"cost": {"input": 0.1, "output": 0.2}, "limit": {"context": 0}, "tool_call": "yes"}
+  }}
+}"#;
+
+fn capability_rows(extra: &str) -> Vec<prices::Row> {
+    let data = prices::parse_models_dev(CAPABILITY_FIXTURE, "prov").unwrap();
+    let cfg = config(&format!(
+        r#"[providers.prov]
+base_url = "http://z"
+api_key_env = "K"
+{extra}"#
+    ));
+    prices::compare(&cfg, "prov", &data)
+}
+
+#[test]
+fn capabilities_are_read_when_the_source_states_them_and_never_guessed() {
+    let data = prices::parse_models_dev(CAPABILITY_FIXTURE, "prov").unwrap();
+    let vision = &data.capabilities["vision-model"];
+    assert_eq!(
+        (vision.context_window, vision.tools, vision.vision),
+        (Some(128_000), Some(true), Some(true))
+    );
+    let text = &data.capabilities["text-model"];
+    assert_eq!(
+        (text.context_window, text.tools, text.vision),
+        (Some(32_000), Some(false), Some(false))
+    );
+    // A free model has no price but still has a window; unstated fields stay unset.
+    let free = &data.capabilities["free-model"];
+    assert_eq!(
+        (free.context_window, free.tools, free.vision),
+        (Some(64_000), None, None)
+    );
+    assert!(
+        !data.capabilities.contains_key("bare-model"),
+        "no data, no entry"
+    );
+    // A zero window and a non-boolean `tool_call` are ignored, not defaulted.
+    let bad = data.capabilities.get("bad-model");
+    assert!(bad.is_none(), "{bad:?}");
+}
+
+#[test]
+fn the_snippet_proposes_capability_fields_for_review_and_they_paste_back_cleanly() {
+    let rows = capability_rows(
+        r#"[targets.v]
+endpoints = [{ provider = "prov", model = "vision-model" }]
+[targets.t]
+endpoints = [{ provider = "prov", model = "text-model" }]"#,
+    );
+    let snippet = prices::render_snippet(&rows, "models-dev:prov", "2026-10-15");
+    assert!(
+        snippet.contains("context_window = 128000, tools = true, vision = true"),
+        "{snippet}"
+    );
+    assert!(
+        snippet.contains("context_window = 32000, tools = false, vision = false"),
+        "{snippet}"
+    );
+    // Pasting the proposed line into the endpoint makes it match the source and creates no drift.
+    let line = snippet
+        .lines()
+        .find(|l| l.starts_with("context_window = 128000"))
+        .unwrap();
+    let pasted = capability_rows(&format!(
+        "[targets.v]\nendpoints = [{{ provider = \"prov\", model = \"vision-model\", price = {{ input = 1.0, output = 2.0 }}, {line} }}]"
+    ));
+    assert!(!prices::has_drift(&pasted), "{pasted:?}");
+}
+
+#[test]
+fn only_a_declaration_the_source_contradicts_counts_as_capability_drift() {
+    // Declared nothing: the source's capabilities are suggestions, not drift.
+    let undeclared = capability_rows(
+        r#"[targets.v]
+endpoints = [{ provider = "prov", model = "vision-model", price = { input = 1.0, output = 2.0 } }]"#,
+    );
+    assert!(!prices::has_drift(&undeclared), "{undeclared:?}");
+
+    // Declared and contradicted: a stale window is reported.
+    let stale = capability_rows(
+        r#"[targets.v]
+endpoints = [{ provider = "prov", model = "vision-model", price = { input = 1.0, output = 2.0 }, context_window = 8000 }]"#,
+    );
+    assert!(prices::has_drift(&stale));
+    let report = prices::render_report(&stale, "models-dev:prov", "2026-10-15");
+    assert!(report.contains("capability differs"), "{report}");
+    assert!(report.contains("context_window = 8000"), "{report}");
+    assert!(
+        report.contains("1 need attention") || report.contains("1 endpoint"),
+        "{report}"
+    );
+    let json = prices::report_json(&stale, "models-dev:prov", "2026-10-15");
+    assert_eq!(json["endpoints"][0]["capability"]["conflict"], true);
+    assert_eq!(json["drift"], true);
+}
+
+#[test]
+fn reports_for_sources_without_capabilities_are_unchanged() {
+    let cfg = config(TARGETS);
+    let rows = prices::compare(&cfg, "opencode", &data());
+    let json = prices::report_json(&rows, "models-dev:opencode-go", "2026-10-15");
+    assert!(
+        json["endpoints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e.get("capability").is_none()),
+        "the price-only fixture adds no capability keys"
+    );
+}

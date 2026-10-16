@@ -45,6 +45,10 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   listener), `key_labels` and `key_label_limit`. See [Metrics and alerts](metrics.md).
 - `decision_retention_days` (top level, default 90): how long routing decisions and provider quota
   samples are kept; see [Keys, budgets and the ledger](budgets.md#the-decision-log).
+- `context_window`, `tools` and `vision` on an endpoint (all optional): what the model can take. A target
+  that cannot serve a request (tools, images or an oversized prompt) is removed before routing, only
+  when that is certain, and a request no target can serve is refused with 400 `no_capable_target`.
+  Undeclared means capable. See [Capabilities](routing.md#capabilities).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,
   `max_cooldown_secs`) and `skip_cold_targets` (default true: leave a target whose endpoints are all
   cooling down out of a request's plan when another target remains, never refusing a request for it);

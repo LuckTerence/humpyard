@@ -26,7 +26,7 @@ Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
-| Capability eligibility: endpoints declare a context window, tool and image support, and a target that cannot serve a request is removed before routing, only on certainty (spec in review, ADR 0019) | An oversized prompt or a tools request is sent to a target that cannot take it and recovers by failing; prompted by Switchyard #427 and the router literature | `add-capability-eligibility` |
+| Capability eligibility: endpoints declare a context window, tool and image support, and a target that cannot serve a request is removed before routing, only on certainty (built, in review for 0.8.3, ADR 0019) | An oversized prompt or a tools request is sent to a target that cannot take it and recovers by failing; prompted by Switchyard #427 and the router literature | `add-capability-eligibility` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order

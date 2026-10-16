@@ -291,6 +291,59 @@ target's error, and nothing is rewritten.
 - **The cost is redundancy by design.** A strict route is only as available as its allowed targets, so
   alert on the metric if that matters.
 
+## Capabilities
+
+An endpoint can say what its model can take, so a request is never sent to a target that cannot serve
+it:
+
+```toml
+[targets.local-coder]
+endpoints = [{ provider = "local", model = "qwen3-coder", context_window = 32768, tools = true, vision = false }]
+```
+
+- `context_window` is the model's window in tokens, `tools = false` says it does not support tool
+  calls, `vision = false` that it does not accept images. **Anything you leave out means unknown,
+  which means capable**, so declaring nothing changes nothing.
+- **Before routing**, a target is removed from a request's plan when none of its endpoints can serve
+  it: the request uses tools and every endpoint says `tools = false`, it carries images and every
+  endpoint says `vision = false`, or its prompt is certainly larger than every declared window. This
+  is the same planning step as [strict routes](#strict-routes) and [health](#endpoint-health), after
+  classes and the routing policy and before health, and it only ever removes targets.
+- **Only when certain.** The gateway's prompt estimate errs high on purpose, which would wrongly remove
+  a target that fits. Capability uses a separate, deliberately low estimate (about one token per six
+  bytes), so a removal means "even an optimistic tokenizer cannot fit this". A prompt close to the
+  limit still goes to the target, and the `overflow` [fallback](#failover) handles a real overflow as
+  before.
+- **A target stays if any endpoint can serve.** Inside a target the endpoints are still tried in
+  order; skipping individual endpoints is not done yet.
+- **If nothing can serve the request**, it is refused before any upstream call with HTTP 400
+  `no_capable_target`, and the message names the reason (for example "the request uses tools but its
+  endpoints declare tools = false"). That is a fact you declared, unlike health, so it does not fail
+  open; remove or correct the declaration if it is wrong.
+- **Visible.** `explain` lists `incapable_targets` with the reason (and shows `no_capable_target` when
+  it would refuse); in `explain`, a `prompt_tokens` you pass is used as the estimate. Each decision lists
+  its `incapable_targets` (`GET /v1/decisions`), and
+  `humpyard_capability_skips_total{route,target,reason}` counts removals ([Metrics](metrics.md)).
+- **Where the numbers come from.** `humpyard prices import` proposes `context_window`, `tools` and
+  `vision` from [models.dev](https://models.dev) next to prices, for review; `prices check` reports a
+  declaration the source contradicts ([Keeping prices current](budgets.md#keeping-prices-current)).
+
+**Tuning the estimate.** The low estimate assumes at least 6 bytes per token, above what any tokenizer
+averages (2 to 5). To check it against your own traffic, compare the ordinary estimate the gateway
+recorded with the input tokens the provider reported; the ordinary estimate is about twice the low
+one, so real counts should stay above half of it:
+
+```sh
+sqlite3 humpyard.db "SELECT COUNT(*), ROUND(MIN(1.0*u.input_tokens/d.prompt_tokens),2) AS worst,
+  ROUND(AVG(1.0*u.input_tokens/d.prompt_tokens),2) AS typical
+  FROM decisions d JOIN usage u ON u.request_id = d.request_id AND u.kind = 'answer'
+  WHERE d.prompt_tokens > 0 AND u.input_tokens > 0;"
+```
+
+If `worst` is well below 0.5 for traffic you care about, the lower bound is not a bound there and the
+divisor should come down. (`prompt_tokens` is recorded when a rule or a declared window needs the
+estimate.)
+
 ## Changing the configuration while running
 
 Routes, selector rules, targets, providers, keys and budgets can be edited and reloaded without a

@@ -48,6 +48,7 @@ cannot call inference or any other endpoint.
 | `humpyard_refusals_total` | counter | `reason`, `key`\* |
 | `humpyard_fallback_blocked_total` | counter | `route` |
 | `humpyard_health_skips_total` | counter | `route`, `target` |
+| `humpyard_capability_skips_total` | counter | `route`, `target`, `reason` |
 | `humpyard_endpoint_state` | gauge | `target`, `provider`, `model`, `state` (1 for the current state) |
 | `humpyard_ledger_queue_depth` | gauge | none |
 | `humpyard_ledger_dropped_total`, `humpyard_ledger_failed_total` | counter | none |
@@ -71,9 +72,12 @@ Notes:
 - **Health skips** counts requests in which a target was [left out of the plan](routing.md#endpoint-health)
   because every endpoint was cooling down and another target remained. It stays at 0 when nothing is cold, and
   when every eligible target is cold (the route fails open).
+- **Capability skips** counts requests in which a target was [removed](routing.md#capabilities) because none
+  of its endpoints could serve them, with `reason` `tools`, `vision` or `context`. Refusals with reason
+  `no_capable_target` are in `refusals_total`.
 - **A request that matched no route** is counted under `route="none"`.
 - **Refusal reasons** are `unauthorized`, `forbidden`, `budget_exhausted`, `no_eligible_target`,
-  `unknown_model` and `bad_request`. Upstream failures show up in `status_class` and in failovers.
+  `unknown_model`, `bad_request` and `no_capable_target`. Upstream failures show up in `status_class` and in failovers.
 
 ## What labels can contain
 

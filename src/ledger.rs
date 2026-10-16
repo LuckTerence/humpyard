@@ -20,11 +20,11 @@ use sqlx::sqlite::{
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-pub use decisions::{Attempt, Decision, DecisionQuery};
+pub use decisions::{Attempt, Decision, DecisionQuery, Incapable};
 pub use quota::{QuotaPoint, QuotaQuery, QuotaSample};
 pub use stats::{GroupBy, GroupStats, Stats, StatsQuery, percentile};
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 /// How often the writer deletes decisions past their retention.
 const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
 /// Decision retention when none is given, in days.
@@ -467,6 +467,10 @@ async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     if version < 5 {
         // v5 (ADR 0018): which targets were skipped because they were cold.
         decisions::migrate_v5(pool).await?;
+    }
+    if version < 6 {
+        // v6 (ADR 0019): which targets were removed because they could not serve the request.
+        decisions::migrate_v6(pool).await?;
     }
     if version < SCHEMA_VERSION {
         // PRAGMA does not take bound parameters; the value is a compile-time constant.

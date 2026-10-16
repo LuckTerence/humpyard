@@ -30,6 +30,10 @@ pub enum GatewayError {
     BudgetExceeded(String),
     #[error("{0}")]
     Unavailable(String),
+    /// No target of the route can serve the request (tools, images or context size), known before
+    /// any upstream call (ADR 0019).
+    #[error("{0}")]
+    NoCapableTarget(String),
     #[error("{0}")]
     Internal(String),
 }
@@ -37,7 +41,7 @@ pub enum GatewayError {
 impl GatewayError {
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::BadRequest(_) | Self::NoCapableTarget(_) => StatusCode::BAD_REQUEST,
             Self::ModelNotFound(_) => StatusCode::NOT_FOUND,
             Self::Upstream { status, .. } => *status,
             Self::UpstreamUnreachable(_) => StatusCode::BAD_GATEWAY,
@@ -63,6 +67,7 @@ impl GatewayError {
             Self::Forbidden(_) => "forbidden",
             Self::BudgetExceeded(_) => "budget_exhausted",
             Self::Unavailable(_) => "no_eligible_target",
+            Self::NoCapableTarget(_) => "no_capable_target",
             Self::Internal(_) => "internal_error",
         }
     }
