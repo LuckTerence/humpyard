@@ -347,6 +347,30 @@ fn tokens_and_cost_are_counted_per_call() {
 }
 
 #[test]
+fn cached_and_cache_creation_tokens_are_their_own_directions() {
+    let m = registry(Settings::default());
+    let mut e = entry(None);
+    e.input_tokens = 100;
+    e.cached_input_tokens = 700;
+    e.cache_creation_tokens = 200;
+    e.output_tokens = 50;
+    m.observe_usage(&e);
+    let samples = parse(&m.render(vec![]));
+    let by_direction: BTreeMap<String, f64> = find(&samples, "humpyard_tokens_total")
+        .iter()
+        .map(|s| (s.1["direction"].clone(), s.2))
+        .collect();
+    assert_eq!(by_direction["input"], 100.0);
+    assert_eq!(by_direction["cached_input"], 700.0);
+    assert_eq!(by_direction["cache_creation"], 200.0);
+    assert_eq!(by_direction["output"], 50.0);
+    // The cache-hit ratio a dashboard derives: cached over input + cached + cache creation.
+    let ratio = by_direction["cached_input"]
+        / (by_direction["input"] + by_direction["cached_input"] + by_direction["cache_creation"]);
+    assert!((ratio - 0.7).abs() < 1e-9);
+}
+
+#[test]
 fn a_failed_attempt_followed_by_another_is_a_failover() {
     let m = registry(Settings::default());
     let mut d = decision(None);

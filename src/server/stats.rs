@@ -11,12 +11,12 @@ use serde_json::{Value, json};
 use switchyard_protocol::WireFormat;
 
 use super::{AppState, GatewayError, authenticate};
-use crate::ledger::{GroupBy, GroupStats, StatsQuery};
+use crate::ledger::{GroupBy, GroupStats, StatsQuery, TokenTotals};
 
 pub(super) const DEFAULT_WINDOW_MS: i64 = 24 * 3_600_000;
 /// The window when the decision retention is "forever".
 const UNBOUNDED_WINDOW_MS: i64 = 365 * 86_400_000;
-const ROW_CAP: u32 = 50_000;
+pub(super) const ROW_CAP: u32 = 50_000;
 
 pub(super) async fn get_stats(
     State(state): State<Arc<AppState>>,
@@ -35,10 +35,16 @@ pub(super) async fn get_stats(
         )
         .into_response_for(format);
     };
-    let longest = match snap.config.decision_retention_days {
-        0 => UNBOUNDED_WINDOW_MS,
-        days => i64::try_from(days.saturating_mul(86_400_000)).unwrap_or(UNBOUNDED_WINDOW_MS),
-    };
+    let longest = longest_window(&snap);
+    if params.get("group_by").is_some_and(|g| g == "session") {
+        return super::sessions::sessions_view(
+            &state,
+            caller.as_ref().map(|k| k.id.clone()),
+            &params,
+            longest,
+        )
+        .await;
+    }
     let query = match parse(
         &params,
         caller.as_ref().map(|k| k.id.clone()),
@@ -59,6 +65,14 @@ pub(super) async fn get_stats(
         }))
         .into_response(),
         Err(error) => GatewayError::Internal(error.to_string()).into_response_for(format),
+    }
+}
+
+/// The longest window a caller may ask for: the decision retention (or a year when it is forever).
+pub(super) fn longest_window(snap: &super::Snapshot) -> i64 {
+    match snap.config.decision_retention_days {
+        0 => UNBOUNDED_WINDOW_MS,
+        days => i64::try_from(days.saturating_mul(86_400_000)).unwrap_or(UNBOUNDED_WINDOW_MS),
     }
 }
 
@@ -119,6 +133,16 @@ fn rate(part: u64, whole: u64) -> Option<f64> {
     (whole > 0).then(|| crate::num::f64_from_u64(part) / crate::num::f64_from_u64(whole))
 }
 
+/// The token split of a group: fresh input, cached input, cache creation and output.
+pub(super) fn tokens_json(t: &TokenTotals) -> Value {
+    json!({
+        "input": t.input,
+        "cached_input": t.cached_input,
+        "cache_creation": t.cache_creation,
+        "output": t.output,
+    })
+}
+
 fn group_json(g: &GroupStats) -> Value {
     json!({
         "group": g.group,
@@ -133,5 +157,7 @@ fn group_json(g: &GroupStats) -> Value {
         "answered": g.answered,
         "avg_cost_usd": g.avg_cost_micro_usd.map(|c| c / 1_000_000.0),
         "avg_tokens": g.avg_tokens,
+        "tokens": tokens_json(&g.tokens),
+        "cache_hit_ratio": g.tokens.cache_hit_ratio(),
     })
 }

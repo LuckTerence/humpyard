@@ -55,6 +55,7 @@ mod decisions;
 mod explain;
 mod metrics;
 mod quota;
+mod sessions;
 mod stats;
 
 const ROUTE_HEADER: &str = "x-humpyard-route";
@@ -467,6 +468,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/route/explain", post(explain::explain_route))
         .route("/v1/decisions", get(decisions::list_decisions))
         .route("/v1/stats", get(stats::get_stats))
+        .route("/v1/stats/switches", get(sessions::get_switches))
         .route("/v1/quota", get(quota::get_quota))
         .route("/v1/quota/history", get(quota::get_history))
         .route(

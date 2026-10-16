@@ -34,7 +34,7 @@ Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://di
 | # | Item | Depends on | Spec |
 |---|---|---|---|
 | 1 | Rules that match on quota (`when.quota`), shown in `explain` and recorded on decisions, plus a pacing recipe | the measurement above | `add-quota-routing` step 3 |
-| 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session (spec in review) | nothing | `add-session-analytics` |
+| 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session (built, in review for 0.8.4) | nothing | `add-session-analytics` |
 | 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if item 2 shows switching is costly | item 2 | `add-auto-routing` 3.1 |
 | 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | item 2 | not yet proposed |
 | 3c | Free-pool routing, to replace ModelRelay: honor `Retry-After`, order a route's targets by observed latency, tags on targets with pools built from them, a bundled free-model catalog, then `migrate-modelrelay` and retirement. See [Replacing ModelRelay](#replacing-modelrelay) | capability eligibility and health skipping (shipped) | not yet proposed |
@@ -98,6 +98,17 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   and with quality signals in them; it needs exploration, so a model that scored badly once still
   gets looked at again.
 - **An external guardrail hook**, only on demand: one generic rule action that calls a configured HTTP service with a strict timeout and an explicit fail-open or fail-closed choice, so moderation and PII services (Lakera, Presidio, Bedrock and similar) can be used without humpyard embedding each. It puts network on the request path, so it needs its own ADR. Response-side filtering and prompt masking are not planned.
+- **Router benchmarking against TwinRouterBench**, which scores routers on coding agents that pick a model
+  at every call (task success and real API spend). Its **static track** (970 labelled conversation
+  prefixes, scored offline) can be run for free by sending each prefix through the real gateway with mock
+  upstreams standing in for the tiers and recording which tier answered; it is next after the session
+  analytics. Its **dynamic track** (100 SWE-bench Verified cases through `--base-url`, roughly $25 to $55 a
+  run) is on the back burner until the static result says it is worth the spend. RouterBench, RouterArena
+  and LLMRouterBench score single-turn question answering, where a router that does not read content has
+  nothing to show, so they are not planned.
+- **A savings-versus-baseline view** in `/v1/stats`: what the same real traffic would have cost on one
+  reference endpoint, priced from the config (the demo does this by hand with two keys). It reuses the
+  pricing code of the session analytics and needs its own spec.
 - **A classifier-backed rule action**, if the decision log shows the catch-all route is too coarse.
 - **Quota per model**, if a provider publishes it; adapters for other providers' usage endpoints.
 - **A fuller admin GUI**, as an optional separate client of the admin API.

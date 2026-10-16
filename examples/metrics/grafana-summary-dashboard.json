@@ -1376,6 +1376,56 @@
           "range": false
         }
       ]
+    },
+    {
+      "id": 27,
+      "type": "bargauge",
+      "title": "Cache hit ratio by route",
+      "description": "Cached input tokens over all prompt tokens in the selected range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 8,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "namePlacement": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (increase(humpyard_tokens_total{direction=\"cached_input\"}[$__range])) / sum by (route) (increase(humpyard_tokens_total{direction=~\"input|cached_input|cache_creation\"}[$__range]))",
+          "legendFormat": "{{route}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "instant": true,
+          "range": false
+        }
+      ]
     }
   ]
 }
