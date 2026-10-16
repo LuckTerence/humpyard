@@ -26,6 +26,7 @@ Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://di
 
 | Item | Why now | Spec |
 |---|---|---|
+| Capability eligibility: endpoints declare a context window, tool and image support, and a target that cannot serve a request is removed before routing, only on certainty (spec in review, ADR 0019) | An oversized prompt or a tools request is sent to a target that cannot take it and recovers by failing; prompted by Switchyard #427 and the router literature | `add-capability-eligibility` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
@@ -33,7 +34,9 @@ Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://di
 | # | Item | Depends on | Spec |
 |---|---|---|---|
 | 1 | Rules that match on quota (`when.quota`), shown in `explain` and recorded on decisions, plus a pacing recipe | the measurement above | `add-quota-routing` step 3 |
-| 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool | nothing | `add-auto-routing` 3.1 |
+| 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session | nothing | not yet proposed |
+| 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if item 2 shows switching is costly | item 2 | `add-auto-routing` 3.1 |
+| 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | item 2 | not yet proposed |
 | 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
 
 ## Planned: the operator surface

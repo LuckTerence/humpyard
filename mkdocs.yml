@@ -112,3 +112,4 @@ nav:
           - "0016 Metrics, one registry": adr/0016-metrics-are-one-registry-with-bounded-labels.md
           - "0017 Strict routes": adr/0017-strict-routes-exclude-disallowed-classes-before-routing.md
           - "0018 Cold targets": adr/0018-cold-targets-are-skipped-only-when-an-alternative-remains.md
+          - "0019 Capabilities": adr/0019-declared-capabilities-remove-targets-that-cannot-serve-a-request.md
