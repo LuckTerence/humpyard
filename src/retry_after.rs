@@ -6,7 +6,7 @@
 //! repeat it ("Please try again in 7.66s", a `retryDelay` field). [`from_body`] is the one place that
 //! reads it; adopting the header later means trying it first here.
 //!
-//! The body is provider-controlled text. Only the first [`MAX_BODY_BYTES`] are read, only a few
+//! The body is provider-controlled text. Only the first 4 KiB are read, only a few
 //! well-known phrasings and fields are recognized, and the only thing that leaves this module is a
 //! duration.
 
