@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.4. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -22,6 +22,7 @@ Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://di
 | 0.8.1 | 2026-10-15 | Strict routes: `allowed_classes` removes targets of other classes before routing, so a private route can never reach a public target (validated at load, recorded on decisions, `humpyard_fallback_blocked_total`, ADR 0017); a summary Grafana dashboard (totals over a time range) and a corrected Switchyard link |
 | 0.8.2 | 2026-10-15 | Health-driven eligibility: a target whose endpoints are all cooling down is left out of a request's plan when another target remains, failing open so health still never denies service (`cold_targets` on decisions, `humpyard_health_skips_total`, `[health] skip_cold_targets`, ADR 0018) |
 | 0.8.3 | 2026-10-16 | Capability eligibility: endpoints declare `context_window`, `tools` and `vision`; a target that cannot serve a request is removed before routing, only on certainty (a declared limit, or a deliberately low prompt estimate), and a request nothing can serve is refused with 400 `no_capable_target` before any upstream call (`incapable_targets` on decisions, `humpyard_capability_skips_total`, `prices import` proposes the fields, ADR 0019); the README quick start is self-contained |
+| 0.8.4 | 2026-10-16 | Session and cache analytics: token totals and `cache_hit_ratio` on every statistics group, `group_by=session`, and `GET /v1/stats/switches` (cached tokens abandoned when a session changes endpoint, priced from the config, with session coverage), `cached_input` and `cache_creation` token directions in `/metrics`; read-only, it measures whether session stickiness is worth building |
 
 ## Building now
 
@@ -34,9 +35,8 @@ Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://di
 | # | Item | Depends on | Spec |
 |---|---|---|---|
 | 1 | Rules that match on quota (`when.quota`), shown in `explain` and recorded on decisions, plus a pacing recipe | the measurement above | `add-quota-routing` step 3 |
-| 2 | Session and cache analytics (fast follow to capability eligibility): `group_by=session`, cache-hit ratio per target, and sessions that switched targets with the cached input they lost, so the cost of switching models mid-session is measured before anything pins a session (built, in review for 0.8.4) | nothing | `add-session-analytics` |
-| 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if item 2 shows switching is costly | item 2 | `add-auto-routing` 3.1 |
-| 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | item 2 | not yet proposed |
+| 3 | Session stickiness: find which clients send a usable session id, and whether a conversation can be pinned to a pool. Soft stickiness (keep a session on its previous target while it stays eligible) only if the switch report (shipped in 0.8.4) shows switching is costly | the switch report (shipped) | `add-auto-routing` 3.1 |
+| 3b | Session-level experiments (fast follow): a `random` route that splits per session, not per request, records the arm on the decision and compares cost, latency and errors per arm; quality comparison waits for quality signals | session analytics (shipped) | not yet proposed |
 | 3c | Free-pool routing, to replace ModelRelay: honor `Retry-After`, order a route's targets by observed latency, tags on targets with pools built from them, a bundled free-model catalog, then `migrate-modelrelay` and retirement. See [Replacing ModelRelay](#replacing-modelrelay) | capability eligibility and health skipping (shipped) | not yet proposed |
 | 3d | Content signals: local, deterministic detectors (private keys and common API-token patterns, `.env`-style secrets, PII-lite such as emails and Luhn-valid card numbers) that produce facts for selector rules (`when.contains`), so a request holding a secret can be routed to a private pool, and with a strict route can never reach a public one. Categories and counts only are recorded, never matches or positions. The default action is to route; `refuse` (a clear 400) is an opt-in per rule. No masking, no response filtering, no third-party calls | nothing (best after strict routes, shipped) | not yet proposed |
 | 4 | A demo on real traffic: a Claude Code or Codex session through an `auto` route, with cost and latency from `/v1/stats` (the no-key demo with a mock provider is shipped) | prices in a real deployment | `add-auto-routing` 5.2 |
