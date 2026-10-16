@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.8.3. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -21,12 +21,12 @@ Last updated: 2026-10-14. Latest release: 0.8.2. Community: [Discord](https://di
 | 0.8.0 | 2026-10-14 | `/metrics`: Prometheus metrics on one registry (a status page can read the same one later), off by default, on a separate listener or behind its own credential, labels only from configuration, opt-in per-key series; Grafana dashboard, alert rules, ServiceMonitor and NetworkPolicy examples (ADR 0016) |
 | 0.8.1 | 2026-10-15 | Strict routes: `allowed_classes` removes targets of other classes before routing, so a private route can never reach a public target (validated at load, recorded on decisions, `humpyard_fallback_blocked_total`, ADR 0017); a summary Grafana dashboard (totals over a time range) and a corrected Switchyard link |
 | 0.8.2 | 2026-10-15 | Health-driven eligibility: a target whose endpoints are all cooling down is left out of a request's plan when another target remains, failing open so health still never denies service (`cold_targets` on decisions, `humpyard_health_skips_total`, `[health] skip_cold_targets`, ADR 0018) |
+| 0.8.3 | 2026-10-16 | Capability eligibility: endpoints declare `context_window`, `tools` and `vision`; a target that cannot serve a request is removed before routing, only on certainty (a declared limit, or a deliberately low prompt estimate), and a request nothing can serve is refused with 400 `no_capable_target` before any upstream call (`incapable_targets` on decisions, `humpyard_capability_skips_total`, `prices import` proposes the fields, ADR 0019); the README quick start is self-contained |
 
 ## Building now
 
 | Item | Why now | Spec |
 |---|---|---|
-| Capability eligibility: endpoints declare a context window, tool and image support, and a target that cannot serve a request is removed before routing, only on certainty (built, in review for 0.8.3, ADR 0019) | An oversized prompt or a tools request is sent to a target that cannot take it and recovers by failing; prompted by Switchyard #427 and the router literature | `add-capability-eligibility` |
 | Measure quota against cost | Days of real data decide what a quota percent means, what the status values are and what happens at a cap. No rule should use it before that | `add-quota-routing` 2.1 |
 
 ## Next, in order
