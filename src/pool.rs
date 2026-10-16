@@ -67,6 +67,9 @@ pub struct EndpointAttempt {
     /// `ok`, the failure class (`rate_limit`, `timeout`, ...), or `error` for other failures.
     pub outcome: String,
     pub ms: u64,
+    /// The retry time the endpoint stated (clamped), when this failure stated one and the endpoint was
+    /// cooled for it.
+    pub retry_after_ms: Option<u64>,
 }
 
 /// Which endpoint served a call, so usage can be attributed and priced.
@@ -93,6 +96,21 @@ fn fails_over(error: &LlmClientError) -> bool {
                 || status.is_server_error()
         }
         _ => false,
+    }
+}
+
+/// The retry time a 429 or 503 states, clamped to what `[health]` allows. Other statuses and errors
+/// that state nothing readable return `None` and are handled by the ordinary failure count.
+fn stated_retry_time(error: &LlmClientError, health: HealthConfig) -> Option<Duration> {
+    match error {
+        LlmClientError::UpstreamHttp { status, body }
+            if *status == StatusCode::TOO_MANY_REQUESTS
+                || *status == StatusCode::SERVICE_UNAVAILABLE =>
+        {
+            crate::retry_after::from_body(body)
+                .map(|wait| crate::retry_after::clamp(wait, health.max_retry_after_secs))
+        }
+        _ => None,
     }
 }
 
@@ -190,6 +208,14 @@ impl TargetClient {
             attempt.llm_request.model = Some(endpoint.model.clone());
             let started = std::time::Instant::now();
             let result = endpoint.client.call(attempt).await;
+            // A rate-limited or unavailable endpoint that says when it will serve again is cooled for
+            // exactly that long (ADR 0018, amended); the breaker records it only for failures that
+            // fail over.
+            let wait_hint = result
+                .as_ref()
+                .err()
+                .filter(|error| fails_over(error))
+                .and_then(|error| stated_retry_time(error, endpoint.breaker.config()));
             on_attempt(EndpointAttempt {
                 provider: endpoint.provider.clone(),
                 model: endpoint.model.clone(),
@@ -200,6 +226,7 @@ impl TargetClient {
                         .to_string(),
                 },
                 ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                retry_after_ms: wait_hint.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
             });
             match result {
                 Ok(mut response) => {
@@ -219,7 +246,10 @@ impl TargetClient {
                 }
                 Err(error) if fails_over(&error) => {
                     slot.resolved();
-                    endpoint.log(endpoint.breaker.failure());
+                    endpoint.log(match wait_hint {
+                        Some(wait) => endpoint.breaker.failure_for(wait),
+                        None => endpoint.breaker.failure(),
+                    });
                     if position + 1 >= count {
                         return Err(for_target_fallback(error));
                     }

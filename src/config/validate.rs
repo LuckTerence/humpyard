@@ -332,6 +332,11 @@ pub(super) fn validate_health(raw: &RawConfig) -> Result<(), ConfigError> {
             "health.max_cooldown_secs must be between cooldown_secs and 86400",
         ));
     }
+    if health.max_retry_after_secs == 0 || health.max_retry_after_secs > MAX_COOLDOWN_SECS {
+        return Err(invalid(
+            "health.max_retry_after_secs must be between 1 and 86400",
+        ));
+    }
     Ok(())
 }
 

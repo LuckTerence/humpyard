@@ -51,6 +51,7 @@ cannot call inference or any other endpoint.
 | `humpyard_refusals_total` | counter | `reason`, `key`\* |
 | `humpyard_fallback_blocked_total` | counter | `route` |
 | `humpyard_health_skips_total` | counter | `route`, `target` |
+| `humpyard_retry_after_honored_total` | counter | `provider`, `source` (`body` today) |
 | `humpyard_capability_skips_total` | counter | `route`, `target`, `reason` |
 | `humpyard_endpoint_state` | gauge | `target`, `provider`, `model`, `state` (1 for the current state) |
 | `humpyard_ledger_queue_depth` | gauge | none |

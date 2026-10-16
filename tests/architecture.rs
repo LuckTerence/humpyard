@@ -50,6 +50,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("clock", module(Core, &["num"])),
         ("num", module(Core, &[])),
         ("estimate", module(Core, &[])),
+        // Reads a retry time out of an upstream error body; pure text parsing (ADR 0018, amended).
+        ("retry_after", module(Core, &[])),
         ("health", module(Core, &["clock", "config"])),
         ("select", module(Core, &["config"])),
         ("config", module(Core, &[])),
@@ -76,7 +78,10 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("metrics", module(Core, &["config", "ledger"])),
         (
             "pool",
-            module(Engine, &["clock", "config", "error", "health"]),
+            module(
+                Engine,
+                &["clock", "config", "error", "health", "retry_after"],
+            ),
         ),
         ("routing", module(Engine, &["config"])),
         (

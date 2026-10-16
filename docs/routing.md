@@ -370,8 +370,21 @@ never counted.
 failure_threshold = 3  # 0 turns health tracking off
 cooldown_secs = 30
 max_cooldown_secs = 300
+max_retry_after_secs = 300  # the longest a stated retry time cools an endpoint
 skip_cold_targets = true  # leave a cold target out of the plan when another target remains
 ```
+
+- **A stated retry time wins over the guess.** When a 429 or 503 says when the endpoint will serve again
+  (the error body reads "Please try again in 7.66s", or carries a `retryDelay` or `retry_after` field),
+  the endpoint is cooled at once for exactly that long, clamped to between 1 second and
+  `max_retry_after_secs`: no waiting for `failure_threshold` failures, no doubling, and not held to
+  `max_cooldown_secs`, because a stated time is not a guess. A later failure streak without a stated time
+  is not escalated by it. Only the first 4 KiB of the body is read, only well-known phrasings are
+  recognized, and anything unreadable is handled as above. The `Retry-After` header itself is not read yet:
+  Switchyard 0.3.0 does not expose it on the error it returns (NVIDIA-NeMo/Switchyard#904 adds that), and
+  reading it will take precedence over the body once it does. `GET /v1/health` and `route/explain` show
+  `cooldown_source` (`retry_after` or `failures`), decisions record `retry_after_ms` on the attempt, and
+  `humpyard_retry_after_honored_total` counts them.
 
 - **A cold target is skipped when an alternative exists.** A target whose endpoints are *all*
   cooling down is left out of the route's targets for a request, so the request does not spend its
@@ -395,7 +408,7 @@ skip_cold_targets = true  # leave a cold target out of the plan when another tar
   "endpoint recovered"), and `GET /v1/health` (with a key when the gateway has keys) lists every
   endpoint's `state` (`healthy`, `cooling_down`, `probing`), `consecutive_failures` and
   `cooldown_remaining_ms`.
-- Not yet: `Retry-After` is not honored. See [ADR 0009](adr/0009-endpoint-health-lives-in-the-pool.md)
+- Not yet: the `Retry-After` header is not read (a retry time stated in the error body is, above). See [ADR 0009](adr/0009-endpoint-health-lives-in-the-pool.md)
   and [ADR 0018](adr/0018-cold-targets-are-skipped-only-when-an-alternative-remains.md).
 
 ## Routing policy

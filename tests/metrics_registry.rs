@@ -209,6 +209,7 @@ fn a_clients_strings_never_become_labels() {
             outcome: "rate_limit".into(),
             ms: 1,
             class: None,
+            retry_after_ms: None,
         },
         Attempt {
             target: "fast".into(),
@@ -217,6 +218,7 @@ fn a_clients_strings_never_become_labels() {
             outcome: "ok".into(),
             ms: 1,
             class: None,
+            retry_after_ms: None,
         },
     ];
     m.observe_decision(&d);
@@ -382,6 +384,7 @@ fn a_failed_attempt_followed_by_another_is_a_failover() {
             outcome: "timeout".into(),
             ms: 5,
             class: None,
+            retry_after_ms: None,
         },
         Attempt {
             target: "fast".into(),
@@ -390,6 +393,7 @@ fn a_failed_attempt_followed_by_another_is_a_failover() {
             outcome: "ok".into(),
             ms: 5,
             class: None,
+            retry_after_ms: None,
         },
     ];
     m.observe_decision(&d);

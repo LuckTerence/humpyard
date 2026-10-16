@@ -1,9 +1,11 @@
 //! Endpoint health: a circuit breaker per endpoint. After enough consecutive failures an endpoint
 //! is skipped for a cooldown that doubles on each repeated trip; when it ends, one request is
-//! admitted as a probe. The breaker only decides; the pool decides what counts as a failure and
+//! admitted as a probe. An endpoint that states when it will serve again (a retry time) is cooled for
+//! exactly that long instead. The breaker only decides; the pool decides what counts as a failure and
 //! never lets health deny service (see ADR 0009).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::Mutex;
 
@@ -37,6 +39,27 @@ pub struct Snapshot {
     pub consecutive_failures: u32,
     /// Milliseconds until the cooldown ends (0 when healthy or already due for a probe).
     pub cooldown_remaining_ms: i64,
+    /// Why the breaker last opened; `None` while it never has since it closed.
+    pub cooldown_source: Option<CooldownSource>,
+}
+
+/// What set the length of a cooldown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CooldownSource {
+    /// Consecutive failures, with the configured (doubling) cooldown.
+    Failures,
+    /// The endpoint stated when it would serve again.
+    RetryAfter,
+}
+
+impl CooldownSource {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Failures => "failures",
+            Self::RetryAfter => "retry_after",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -65,6 +88,7 @@ struct Inner {
     trips: u32,
     open_until_ms: Option<i64>,
     probing: bool,
+    source: Option<CooldownSource>,
 }
 
 pub struct Breaker {
@@ -136,6 +160,26 @@ impl Breaker {
         (inner.consecutive_failures >= self.config.failure_threshold).then(|| self.trip(&mut inner))
     }
 
+    /// A request failed and the endpoint stated when it would serve again: cool it for exactly
+    /// `wait` (already clamped by the caller), without waiting for `failure_threshold` failures and
+    /// without the doubling. It does not count as a trip, so a later unannounced failure streak is not
+    /// escalated by it. Failures that arrive while it is cooling change nothing.
+    pub fn failure_for(&self, wait: Duration) -> Option<Transition> {
+        if !self.enabled() {
+            return None;
+        }
+        let mut inner = self.inner.lock();
+        if inner.open_until_ms.is_some() && !inner.probing {
+            return None; // a late failure from a request sent before the breaker opened
+        }
+        inner.consecutive_failures = inner.consecutive_failures.saturating_add(1);
+        inner.probing = false;
+        let cooldown_ms = i64::try_from(wait.as_millis()).unwrap_or(i64::MAX);
+        inner.open_until_ms = Some(self.clock.now_ms().saturating_add(cooldown_ms));
+        inner.source = Some(CooldownSource::RetryAfter);
+        Some(Transition::Opened { cooldown_ms })
+    }
+
     /// The admitted probe ended without a verdict (a non-health error, or the request was
     /// cancelled): let the next request probe instead.
     pub fn release_probe(&self) {
@@ -162,6 +206,7 @@ impl Breaker {
             state,
             consecutive_failures: inner.consecutive_failures,
             cooldown_remaining_ms: remaining,
+            cooldown_source: inner.source,
         }
     }
 
@@ -170,6 +215,7 @@ impl Breaker {
         inner.probing = false;
         let cooldown_ms = self.cooldown_ms(inner.trips);
         inner.open_until_ms = Some(self.clock.now_ms().saturating_add(cooldown_ms));
+        inner.source = Some(CooldownSource::Failures);
         Transition::Opened { cooldown_ms }
     }
 
@@ -204,6 +250,7 @@ mod tests {
             failure_threshold: threshold,
             cooldown_secs: 10,
             max_cooldown_secs: 35,
+            max_retry_after_secs: 300,
             skip_cold_targets: true,
         };
         (Breaker::new(config, clock.clone()), clock)
@@ -320,5 +367,94 @@ mod tests {
         }
         assert_eq!(b.admit(), Admission::Allowed);
         assert_eq!(b.snapshot().state, State::Healthy);
+    }
+
+    fn advance_ms(clock: &Manual, ms: i64) {
+        clock.0.fetch_add(ms, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn a_stated_retry_time_opens_at_once_for_exactly_that_long() {
+        let (b, clock) = breaker(3);
+        assert_eq!(
+            b.failure_for(Duration::from_secs(20)),
+            Some(Transition::Opened {
+                cooldown_ms: 20_000
+            })
+        );
+        assert_eq!(b.admit(), Admission::Skip);
+        advance_ms(&clock, 19_999);
+        assert_eq!(b.admit(), Admission::Skip);
+        advance_ms(&clock, 1);
+        assert_eq!(b.admit(), Admission::Probe);
+        assert_eq!(
+            b.snapshot().cooldown_source,
+            Some(CooldownSource::RetryAfter)
+        );
+    }
+
+    #[test]
+    fn a_stated_time_is_not_capped_by_the_guessed_cooldown_or_doubled() {
+        let (b, _) = breaker(3);
+        // The test config caps guessed cooldowns at 35 s; a stated 120 s is honored in full.
+        assert_eq!(
+            b.failure_for(Duration::from_secs(120)),
+            Some(Transition::Opened {
+                cooldown_ms: 120_000
+            })
+        );
+        assert_eq!(b.cooldown_remaining_ms(), 120_000);
+    }
+
+    #[test]
+    fn late_failures_do_not_change_a_stated_cooldown() {
+        let (b, clock) = breaker(3);
+        b.failure_for(Duration::from_secs(20));
+        advance_ms(&clock, 5_000);
+        assert_eq!(b.failure_for(Duration::from_secs(60)), None);
+        assert_eq!(b.failure(), None);
+        assert_eq!(b.cooldown_remaining_ms(), 15_000);
+    }
+
+    #[test]
+    fn a_failed_probe_with_a_new_stated_time_reopens_for_that_time() {
+        let (b, clock) = breaker(3);
+        b.failure_for(Duration::from_secs(10));
+        advance_ms(&clock, 10_000);
+        assert_eq!(b.admit(), Admission::Probe);
+        assert_eq!(
+            b.failure_for(Duration::from_secs(40)),
+            Some(Transition::Opened {
+                cooldown_ms: 40_000
+            })
+        );
+        assert_eq!(b.admit(), Admission::Skip);
+    }
+
+    #[test]
+    fn a_stated_time_does_not_escalate_the_guessed_cooldown() {
+        let (b, clock) = breaker(3);
+        b.failure_for(Duration::from_secs(10));
+        advance_ms(&clock, 10_000);
+        assert_eq!(b.admit(), Admission::Probe);
+        b.success();
+        // Three ordinary failures trip the breaker at the base cooldown, not a doubled one.
+        for _ in 0..2 {
+            assert_eq!(b.failure(), None);
+        }
+        assert_eq!(
+            b.failure(),
+            Some(Transition::Opened {
+                cooldown_ms: 10_000
+            })
+        );
+        assert_eq!(b.snapshot().cooldown_source, Some(CooldownSource::Failures));
+    }
+
+    #[test]
+    fn a_disabled_breaker_ignores_stated_times() {
+        let (b, _) = breaker(0);
+        assert_eq!(b.failure_for(Duration::from_secs(20)), None);
+        assert_eq!(b.admit(), Admission::Allowed);
     }
 }

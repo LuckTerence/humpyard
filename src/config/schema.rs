@@ -86,6 +86,9 @@ pub(super) struct RawHealth {
     pub(super) cooldown_secs: u64,
     #[serde(default = "default_max_cooldown_secs")]
     pub(super) max_cooldown_secs: u64,
+    /// The longest an endpoint is cooled for a retry time its error stated (ADR 0018).
+    #[serde(default = "default_max_retry_after_secs")]
+    pub(super) max_retry_after_secs: u64,
     /// Leave a target whose endpoints are all cooling down out of a request's plan when another
     /// target remains (ADR 0018). On by default.
     #[serde(default = "default_skip_cold_targets")]
@@ -98,6 +101,7 @@ impl Default for RawHealth {
             failure_threshold: default_failure_threshold(),
             cooldown_secs: default_cooldown_secs(),
             max_cooldown_secs: default_max_cooldown_secs(),
+            max_retry_after_secs: default_max_retry_after_secs(),
             skip_cold_targets: default_skip_cold_targets(),
         }
     }
@@ -116,6 +120,10 @@ fn default_cooldown_secs() -> u64 {
 }
 
 fn default_max_cooldown_secs() -> u64 {
+    300
+}
+
+fn default_max_retry_after_secs() -> u64 {
     300
 }
 

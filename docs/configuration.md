@@ -50,7 +50,8 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   when that is certain, and a request no target can serve is refused with 400 `no_capable_target`.
   Undeclared means capable. See [Capabilities](routing.md#capabilities).
 - `[health]`: optional endpoint circuit breaker (`failure_threshold`, `cooldown_secs`,
-  `max_cooldown_secs`) and `skip_cold_targets` (default true: leave a target whose endpoints are all
+  `max_cooldown_secs`, `max_retry_after_secs`: the cap on a cooldown taken from a retry time the error
+  states, default 300) and `skip_cold_targets` (default true: leave a target whose endpoints are all
   cooling down out of a request's plan when another target remains, never refusing a request for it);
   `GET /v1/health` shows which endpoints are being skipped. See [Endpoint health](routing.md#endpoint-health).
 
