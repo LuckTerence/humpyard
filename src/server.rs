@@ -650,6 +650,7 @@ async fn endpoint_health(State(state): State<Arc<AppState>>, headers: HeaderMap)
                         "state": e.snapshot.state.as_str(),
                         "consecutive_failures": e.snapshot.consecutive_failures,
                         "cooldown_remaining_ms": e.snapshot.cooldown_remaining_ms,
+                        "cooldown_source": e.snapshot.cooldown_source.map(crate::health::CooldownSource::as_str),
                     })
                 })
                 .collect();

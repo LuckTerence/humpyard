@@ -321,6 +321,7 @@ fn attempt(target: &str, outcome: &str, ms: u64) -> Attempt {
         outcome: outcome.into(),
         ms,
         class: None,
+        retry_after_ms: None,
     }
 }
 

@@ -40,3 +40,14 @@ statistics stop counting it. A route's availability is still the union of its ta
 still never refuses a request, which keeps invariant 14 true as written. Load concentrates on the
 remaining targets for the length of a cooldown. Decisions gain a stored `cold_targets` field (ledger
 schema v5) holding configuration names only.
+
+## Amended 2026-10-16: stated retry times
+
+A failure that states when the endpoint will serve again (a 429 or 503 whose error says to retry after some
+seconds) cools the endpoint for exactly that time, at once, clamped to between 1 second and
+`[health] max_retry_after_secs` (default 300). It does not count as a trip, so a later unannounced failure
+streak is not escalated by it, and it is not held to `max_cooldown_secs`, which bounds guesses. The time is
+read from the error body for a small set of well-known phrasings and fields until Switchyard exposes the
+`Retry-After` header on its error (NVIDIA-NeMo/Switchyard#904), after which the header takes precedence.
+Eligibility, ordering and the fail-open rule are unchanged. Decisions record the honored time on the
+attempt (`retry_after_ms`, inside the existing attempts column, so no schema change).

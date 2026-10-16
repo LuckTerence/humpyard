@@ -392,6 +392,7 @@ impl RoutedLlmClient for Metered {
                     outcome: a.outcome,
                     ms: a.ms,
                     class: None,
+                    retry_after_ms: a.retry_after_ms,
                 });
             })
             .await

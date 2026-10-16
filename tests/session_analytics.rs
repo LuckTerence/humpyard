@@ -69,6 +69,7 @@ fn decision(key: &str, target: &str, provider: &str, model: &str, age_s: i64) ->
             outcome: "ok".into(),
             ms: 10,
             class: None,
+            retry_after_ms: None,
         }],
         ..Decision::default()
     }

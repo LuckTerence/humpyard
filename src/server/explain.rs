@@ -310,6 +310,7 @@ fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, Group
                         "model": e.model,
                         "state": e.snapshot.state.as_str(),
                         "cooldown_remaining_ms": e.snapshot.cooldown_remaining_ms,
+                        "cooldown_source": e.snapshot.cooldown_source.map(crate::health::CooldownSource::as_str),
                     })
                 })
                 .collect()

@@ -334,6 +334,7 @@ pub struct Metrics {
     failovers: Owned,
     blocked: Owned,
     skips: Owned,
+    retry_after: Owned,
     capability: Owned,
     refusals: Owned,
     reloads: Owned,
@@ -400,6 +401,13 @@ impl Metrics {
                 &["route", "target"],
                 false,
             ),
+            retry_after: Owned::new(
+                "retry_after_honored_total",
+                "Failures whose stated retry time cooled the endpoint for exactly that long, by provider and where the time was read from (body now, header once the engine exposes it).",
+                Kind::Counter,
+                &["provider", "source"],
+                false,
+            ),
             capability: Owned::new(
                 "capability_skips_total",
                 "Requests in which a target was removed from the plan because none of its endpoints could serve the request, by reason (tools, vision, context).",
@@ -464,6 +472,7 @@ impl Metrics {
         }
         self.observe_failovers(&route, d);
         self.observe_health_skips(&route, d);
+        self.observe_retry_after(d);
         self.observe_capability_skips(&route, d);
         // A strict route that failed after calling its allowed targets: the excluded ones are the
         // fallback it did not take.
@@ -489,6 +498,21 @@ impl Metrics {
                     route.to_string(),
                     pick(&vocab.targets, Some(&incapable.target)),
                     fixed(&CAPABILITY_REASONS, &incapable.reason),
+                ],
+                1,
+            );
+        }
+    }
+
+    /// Honored retry times, by provider. The time is read from the error body today; the label is
+    /// there so the header can be told apart when the engine exposes it.
+    fn observe_retry_after(&self, d: &Decision) {
+        let vocab = self.vocab.read();
+        for attempt in d.attempts.iter().filter(|a| a.retry_after_ms.is_some()) {
+            self.retry_after.add(
+                &[
+                    pick(&vocab.providers, Some(&attempt.provider)),
+                    "body".to_string(),
                 ],
                 1,
             );
@@ -587,6 +611,7 @@ impl Metrics {
             &self.failovers,
             &self.blocked,
             &self.skips,
+            &self.retry_after,
             &self.capability,
             &self.refusals,
             &self.reloads,

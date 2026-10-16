@@ -22,6 +22,9 @@ pub struct Attempt {
     /// The target's class label, when it has one (filled in when the decision is recorded).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub class: Option<String>,
+    /// The retry time the endpoint stated for this failure, in milliseconds, when it was honored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_after_ms: Option<u64>,
 }
 
 /// A target removed for capability, and why: `tools`, `vision` or `context`.
