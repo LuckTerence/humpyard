@@ -365,7 +365,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "humpyard_endpoint_state{state!=\"healthy\"} == 1",
+          "expr": "max by (target, provider, model, state) (humpyard_endpoint_state{state!=\"healthy\"}) == 1",
           "legendFormat": "{{target}} {{provider}}/{{model}}: {{state}}",
           "datasource": {
             "type": "prometheus",
@@ -398,7 +398,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "humpyard_quota_percent",
+          "expr": "max by (provider, window) (humpyard_quota_percent)",
           "legendFormat": "{{provider}} {{window}}",
           "datasource": {
             "type": "prometheus",
@@ -431,7 +431,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "humpyard_ledger_queue_depth",
+          "expr": "max(humpyard_ledger_queue_depth)",
           "legendFormat": "queued",
           "datasource": {
             "type": "prometheus",
@@ -440,7 +440,7 @@
         },
         {
           "refId": "B",
-          "expr": "increase(humpyard_ledger_dropped_total[$__interval])",
+          "expr": "sum(increase(humpyard_ledger_dropped_total[$__interval]))",
           "legendFormat": "dropped",
           "datasource": {
             "type": "prometheus",
@@ -449,7 +449,7 @@
         },
         {
           "refId": "C",
-          "expr": "increase(humpyard_ledger_failed_total[$__interval])",
+          "expr": "sum(increase(humpyard_ledger_failed_total[$__interval]))",
           "legendFormat": "failed",
           "datasource": {
             "type": "prometheus",

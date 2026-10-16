@@ -5,6 +5,9 @@ you already run need no custom UI. They answer "is it healthy right now": reques
 failovers, latency, spend, endpoint breaker state, the ledger backlog and provider quota. The
 ledger stays the source of truth for cost and history (`/v1/stats`, `/v1/decisions`); metrics are
 live aggregates that reset when the process restarts, which Prometheus handles.
+Every restart or rollout gives the metrics a new `pod` and `instance` label, so a gauge queried bare shows one
+series per pod that ran in the range; the example dashboards aggregate (`max by (...)`, `sum(increase(...))`) for that reason, and
+your own panels should too.
 
 Metrics are **off by default**.
 
