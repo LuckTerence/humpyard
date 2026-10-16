@@ -1198,11 +1198,39 @@ fn select_route<'a>(
 }
 
 /// Stage 2b: what the client's headers tell us about the session and agent.
+/// Header names, after the ones the routing engine recognizes, that carry a client's session id.
+const SESSION_ID_FALLBACKS: [&str; 2] = ["session_id", "x-session-affinity"];
+const MAX_SESSION_ID_LEN: usize = 256;
+
+/// A session id is client text that reaches the ledger and statistics, so it must be 1 to 256 visible
+/// ASCII characters; anything else is ignored rather than failing the request.
+fn usable_session_id(id: &str) -> bool {
+    (1..=MAX_SESSION_ID_LEN).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_graphic())
+}
+
+fn fallback_session_id(headers: &HeaderMap) -> Option<String> {
+    SESSION_ID_FALLBACKS.iter().find_map(|name| {
+        headers
+            .get(*name)
+            .and_then(|value| value.to_str().ok())
+            .filter(|id| usable_session_id(id))
+            .map(str::to_string)
+    })
+}
+
 fn request_info(headers: &HeaderMap) -> RequestInfo {
     // `wire_format` stays unset: setting it pins the backend to the client's protocol, but every
     // endpoint speaks OpenAI Chat and the IR is translated for it.
-    let metadata = Metadata::from_headers(headers);
-    let session_id = metadata.session_id.clone().filter(|s| !s.is_empty());
+    let mut metadata = Metadata::from_headers(headers);
+    // Headers the routing engine recognizes win; the fallbacks cover clients (OpenClaw with session
+    // affinity on) that send a session-shaped name it does not know. The id goes into the metadata so the
+    // engine's per-session state and the recorded session agree.
+    let session_id = metadata
+        .session_id
+        .clone()
+        .filter(|id| usable_session_id(id))
+        .or_else(|| fallback_session_id(headers));
+    metadata.session_id.clone_from(&session_id);
     let meta = RequestMeta {
         agent_id: metadata.agent_id.clone(),
         parent_agent_id: metadata.parent_agent_id.clone(),
@@ -1654,5 +1682,57 @@ mod tests {
         blank.insert("x-switchyard-session-id", HeaderValue::from_static(""));
         assert_eq!(request_info(&blank).session_id, None);
         assert_eq!(request_info(&HeaderMap::new()).session_id, None);
+    }
+
+    fn with(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for (name, value) in pairs {
+            headers.insert(*name, HeaderValue::from_str(value).unwrap());
+        }
+        headers
+    }
+
+    #[test]
+    fn session_id_fallbacks_run_after_the_recognized_headers_in_order() {
+        let session = |h: &HeaderMap| request_info(h).session_id;
+        assert_eq!(
+            session(&with(&[("session_id", "abc")])).as_deref(),
+            Some("abc")
+        );
+        assert_eq!(
+            session(&with(&[("x-session-affinity", "aff")])).as_deref(),
+            Some("aff")
+        );
+        // Recognized names win over the fallbacks; between fallbacks, `session_id` is first.
+        let both = with(&[("x-switchyard-session-id", "one"), ("session_id", "two")]);
+        assert_eq!(session(&both).as_deref(), Some("one"));
+        let order = with(&[("session_id", "first"), ("x-session-affinity", "second")]);
+        assert_eq!(session(&order).as_deref(), Some("first"));
+        // A request id is not a session.
+        assert_eq!(session(&with(&[("x-client-request-id", "r1")])), None);
+    }
+
+    #[test]
+    fn a_fallback_id_reaches_the_engine_metadata_too() {
+        let info = request_info(&with(&[("session_id", "abc")]));
+        assert_eq!(info.metadata.session_id.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn unusable_session_ids_are_ignored_and_the_next_candidate_is_tried() {
+        let session = |h: &HeaderMap| request_info(h).session_id;
+        let long = "a".repeat(257);
+        assert_eq!(session(&with(&[("session_id", &long)])), None);
+        assert_eq!(
+            session(&with(&[("session_id", &"a".repeat(256))])).map(|s| s.len()),
+            Some(256)
+        );
+        assert_eq!(session(&with(&[("session_id", "has space")])), None);
+        assert_eq!(session(&with(&[("session_id", "")])), None);
+        let next = with(&[("session_id", "bad id"), ("x-session-affinity", "good")]);
+        assert_eq!(session(&next).as_deref(), Some("good"));
+        let mut raw = HeaderMap::new();
+        raw.insert("session_id", HeaderValue::from_bytes(b"caf\xe9").unwrap());
+        assert_eq!(session(&raw), None, "non-ASCII bytes are not a session id");
     }
 }

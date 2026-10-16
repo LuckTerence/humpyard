@@ -21,7 +21,12 @@ the selected target (failing over across its endpoints), then encode the answer 
 | `llm_classifier` | A `judge` target decides: `capability` mode judges task difficulty, `escalation` mode latches the session to `capable` after `confirmations` verdicts |
 
 Algorithms keep per-session state (escalation latches, capable-hold turns). Clients identify a
-session with the `x-switchyard-session-id` header; without it, state-dependent behavior is limited.
+session with the `x-switchyard-session-id` header (the engine also recognizes `x-claude-code-session-id`,
+`x-nemo-relay-session-id`, `x-session-id`, `session-id` and Codex's turn metadata); without one,
+state-dependent behavior is limited. When none of those carries an id, humpyard also accepts `session_id`
+and then `x-session-affinity`, which is what OpenClaw sends with session affinity on. An id must be 1 to
+256 visible ASCII characters; anything else is ignored, and the request is served without a session.
+`prompt_cache_key` and `x-client-request-id` are not session ids.
 
 ## Selecting the route
 
