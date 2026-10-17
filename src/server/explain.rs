@@ -127,6 +127,12 @@ fn plan_report(
     let mut models: Vec<ModelId> = planned.plan.models.models_for(&Category::Any).to_vec();
     report["outcome"] = json!("ok");
     report["fallback_on"] = fallback_on_report(&planned.plan.fallback);
+    report["fallback_includes_unavailable"] = json!(
+        planned
+            .plan
+            .fallback
+            .allows(crate::config::FallbackClass::Unavailable)
+    );
     // A `fastest` route tries its targets by speed: show the order a request would use now (without
     // exploration, which is a per-request draw) and how often it explores.
     if let Some(route) = snap.routes.get(route) {

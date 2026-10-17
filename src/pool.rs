@@ -13,7 +13,7 @@ use switchyard_protocol::{
 
 use crate::clock::Clock;
 use crate::config::{Config, Endpoint, HealthConfig, Price, Provider};
-use crate::error::{TIMEOUT_MARKER, fallback_class};
+use crate::error::{TIMEOUT_MARKER, fallback_class, is_forbidden, is_unavailable};
 use crate::health::{Admission, Breaker, Snapshot, Transition};
 
 /// Response header naming the provider endpoint that served a request.
@@ -94,6 +94,9 @@ fn fails_over(error: &LlmClientError) -> bool {
             *status == StatusCode::TOO_MANY_REQUESTS
                 || *status == StatusCode::REQUEST_TIMEOUT
                 || status.is_server_error()
+                // The model is gone here or the key is rejected: another endpoint of the target may
+                // serve it, and this one counts as failing (ADR 0023).
+                || is_unavailable(error)
         }
         _ => false,
     }
@@ -260,6 +263,13 @@ impl TargetClient {
                         "endpoint failed; trying next"
                     );
                     last_error = Some(error);
+                }
+                Err(error) if is_forbidden(&error) => {
+                    // A 403 describes this endpoint (the key may not use the model), so it counts against
+                    // its health, but it does not move on to the next endpoint (ADR 0023).
+                    slot.resolved();
+                    endpoint.log(endpoint.breaker.failure());
+                    return Err(error);
                 }
                 Err(error) => return Err(error),
             }

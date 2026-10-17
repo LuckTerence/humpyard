@@ -118,6 +118,52 @@ impl From<LibsyError> for GatewayError {
 /// it back into `UpstreamTimeout`, so a client still sees a timeout when nothing else answers.
 pub const TIMEOUT_MARKER: &str = "humpyard: upstream timed out";
 
+/// Error codes that say the model no longer exists at the provider (some answer 400 for it).
+const MODEL_GONE_CODES: [&str; 3] = [
+    "model_not_found",
+    "model_not_available",
+    "model_decommissioned",
+];
+/// How much of an error body is looked at when checking for a model-gone code.
+const MODEL_GONE_SCAN_BYTES: usize = 4096;
+
+/// Whether an upstream answer says this endpoint cannot serve the request at all: 404, 401, or a 400 whose
+/// error code says the model is gone. These describe the endpoint, not the request (ADR 0023).
+fn is_unavailable_answer(status: StatusCode, body: &str) -> bool {
+    status == StatusCode::NOT_FOUND
+        || status == StatusCode::UNAUTHORIZED
+        || (status == StatusCode::BAD_REQUEST && model_gone(body))
+}
+
+/// An `error.code` or `error.type` naming a missing model, read from the start of the body only.
+fn model_gone(body: &str) -> bool {
+    let end = (0..=MODEL_GONE_SCAN_BYTES.min(body.len()))
+        .rev()
+        .find(|&i| body.is_char_boundary(i))
+        .unwrap_or(0);
+    serde_json::from_str::<serde_json::Value>(&body[..end]).is_ok_and(|value| {
+        ["code", "type"].iter().any(|field| {
+            value["error"][field]
+                .as_str()
+                .is_some_and(|code| MODEL_GONE_CODES.contains(&code))
+        })
+    })
+}
+
+/// Whether `error` says the endpoint cannot serve (404, 401, or a missing-model code), for the pool's
+/// failover within a target and its health count.
+#[must_use]
+pub fn is_unavailable(error: &LlmClientError) -> bool {
+    matches!(error, LlmClientError::UpstreamHttp { status, body } if is_unavailable_answer(*status, body))
+}
+
+/// Whether `error` is a 403, which counts against the endpoint's health but does not fail over within a
+/// target (its class is `forbidden`).
+#[must_use]
+pub fn is_forbidden(error: &LlmClientError) -> bool {
+    matches!(error, LlmClientError::UpstreamHttp { status, .. } if *status == StatusCode::FORBIDDEN)
+}
+
 /// Which kind of failure `error` is, for deciding whether the route may hand the request to its
 /// next target. `None` for errors that never fall through (bad requests, auth failures, ...).
 #[must_use]
@@ -133,6 +179,8 @@ pub fn fallback_class(error: &LlmClientError) -> Option<FallbackClass> {
                 Some(FallbackClass::RateLimit)
             } else if *status == StatusCode::FORBIDDEN {
                 Some(FallbackClass::Forbidden)
+            } else if is_unavailable_answer(*status, body) {
+                Some(FallbackClass::Unavailable)
             } else if *status == StatusCode::REQUEST_TIMEOUT || status.is_server_error() {
                 Some(FallbackClass::ServerError)
             } else {
@@ -147,6 +195,35 @@ pub fn fallback_class(error: &LlmClientError) -> Option<FallbackClass> {
 /// errors, so a failure the route must not fall back on is re-labelled as a general error and
 /// restored by `From` (the client still sees the original status and message).
 const STOP_PREFIX: &str = "humpyard-no-fallback:";
+
+/// Prefix of the body of the synthetic 503 that stands in for an unavailable endpoint's answer.
+const UNAVAILABLE_PREFIX: &str = "humpyard-unavailable:";
+
+/// Re-labels an unavailable endpoint's answer (404, 401, a missing-model 400) as a 503, which Switchyard
+/// falls back on, keeping the original status and text so a client still sees them when no target answers.
+#[must_use]
+pub fn relabel_unavailable(error: &LlmClientError) -> LlmClientError {
+    match error {
+        LlmClientError::UpstreamHttp { status, body } => LlmClientError::UpstreamHttp {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            body: format!(
+                "{UNAVAILABLE_PREFIX}{}",
+                json!({"status": status.as_u16(), "text": body})
+            ),
+        },
+        other => LlmClientError::General(other.to_string()),
+    }
+}
+
+/// The original answer behind a `relabel_unavailable` 503.
+fn restore_unavailable(body: &str) -> Option<LlmClientError> {
+    let value: serde_json::Value =
+        serde_json::from_str(body.strip_prefix(UNAVAILABLE_PREFIX)?).ok()?;
+    Some(LlmClientError::UpstreamHttp {
+        status: StatusCode::from_u16(u16::try_from(value["status"].as_u64()?).ok()?).ok()?,
+        body: value["text"].as_str().unwrap_or_default().to_string(),
+    })
+}
 
 /// Re-labels `error` (of kind `class`) so the route does not hand it to the next target.
 #[must_use]
@@ -189,6 +266,15 @@ impl From<LlmClientError> for GatewayError {
                 if status == StatusCode::GATEWAY_TIMEOUT && body == TIMEOUT_MARKER =>
             {
                 Self::UpstreamTimeout
+            }
+            LlmClientError::UpstreamHttp { status, body }
+                if status == StatusCode::SERVICE_UNAVAILABLE
+                    && body.starts_with(UNAVAILABLE_PREFIX) =>
+            {
+                restore_unavailable(&body).map_or_else(
+                    || Self::UpstreamUnreachable("upstream unavailable".into()),
+                    Self::from,
+                )
             }
             LlmClientError::UpstreamHttp { status, body } => {
                 let message = upstream_message(&body, status);
@@ -331,7 +417,11 @@ mod tests {
             Some(FallbackClass::Timeout)
         );
         assert_eq!(fallback_class(&http(400, "")), None);
-        assert_eq!(fallback_class(&http(404, "")), None);
+        // A 404 now describes the endpoint (the model is gone there), ADR 0023; see the unavailable tests.
+        assert_eq!(
+            fallback_class(&http(404, "")),
+            Some(FallbackClass::Unavailable)
+        );
         assert_eq!(
             fallback_class(&LlmClientError::Timeout { source: "t".into() }),
             Some(FallbackClass::Timeout)
@@ -390,5 +480,71 @@ mod tests {
         assert_eq!(body["type"], "error");
         assert_eq!(body["error"]["type"], "invalid_request_error");
         assert_eq!(body["error"]["message"], "bad");
+    }
+
+    fn answer(status: u16, body: &str) -> LlmClientError {
+        LlmClientError::UpstreamHttp {
+            status: StatusCode::from_u16(status).unwrap(),
+            body: body.to_string(),
+        }
+    }
+
+    #[test]
+    fn answers_that_describe_the_endpoint_are_unavailable() {
+        let gone = r#"{"error":{"message":"x","code":"model_not_found"}}"#;
+        let typed = r#"{"error":{"message":"x","type":"model_decommissioned"}}"#;
+        for (status, body) in [(404, ""), (401, ""), (404, "{}"), (400, gone), (400, typed)] {
+            assert_eq!(
+                fallback_class(&answer(status, body)),
+                Some(FallbackClass::Unavailable),
+                "{status} {body}"
+            );
+        }
+        // Request errors are not, and an unrelated 400 code is not.
+        for (status, body) in [
+            (400, ""),
+            (400, r#"{"error":{"code":"invalid_request"}}"#),
+            (422, ""),
+            (400, "not json"),
+        ] {
+            assert_eq!(
+                fallback_class(&answer(status, body)),
+                None,
+                "{status} {body}"
+            );
+        }
+        // 403 keeps its own class.
+        assert_eq!(
+            fallback_class(&answer(403, "")),
+            Some(FallbackClass::Forbidden)
+        );
+        assert!(is_unavailable(&answer(404, "")));
+        assert!(!is_unavailable(&answer(403, "")));
+        assert!(is_forbidden(&answer(403, "")));
+    }
+
+    #[test]
+    fn a_model_gone_code_past_the_scan_limit_is_not_read() {
+        let padding = "x".repeat(MODEL_GONE_SCAN_BYTES + 10);
+        let body = format!(r#"{{"pad":"{padding}","error":{{"code":"model_not_found"}}}}"#);
+        assert!(!model_gone(&body));
+        assert!(model_gone(r#"{"error":{"code":"model_not_found"}}"#));
+    }
+
+    #[test]
+    fn a_relabelled_answer_comes_back_as_the_original() {
+        let original = answer(404, r#"{"error":{"message":"The model does not exist"}}"#);
+        let relabelled = relabel_unavailable(&original);
+        // Switchyard falls back on a 503; the client sees the 404 again when nothing else answers.
+        assert!(matches!(
+            relabelled,
+            LlmClientError::UpstreamHttp { status, .. } if status == StatusCode::SERVICE_UNAVAILABLE
+        ));
+        let restored = GatewayError::from(relabelled);
+        assert_eq!(restored.status(), 404);
+        assert!(
+            restored.to_string().contains("does not exist"),
+            "{restored}"
+        );
     }
 }

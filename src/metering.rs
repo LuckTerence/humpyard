@@ -18,8 +18,8 @@ use switchyard_protocol::{
 
 use crate::budget::BudgetTracker;
 use crate::clock::Clock;
-use crate::config::{FallbackOn, Price};
-use crate::error::{fallback_class, stop_fallback};
+use crate::config::{FallbackClass, FallbackOn, Price};
+use crate::error::{fallback_class, relabel_unavailable, stop_fallback};
 use crate::estimate::tokens_for_bytes;
 use crate::latency::Latency;
 use crate::ledger::{Attempt, Entry, Kind, Ledger};
@@ -418,6 +418,9 @@ impl RoutedLlmClient for Metered {
             .await
             .map_err(|error| match fallback_class(&error) {
                 Some(class) if !self.fallback.allows(class) => stop_fallback(class, &error),
+                // Switchyard moves to the next target on a 503 but not on a 404 or 401, so an unavailable
+                // endpoint's answer is re-labelled; the original is restored if no target answers.
+                Some(FallbackClass::Unavailable) => relabel_unavailable(&error),
                 _ => error,
             })?;
         let id = self.ctx.next_id.fetch_add(1, Ordering::Relaxed);

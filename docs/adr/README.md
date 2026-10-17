@@ -35,6 +35,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0019](0019-declared-capabilities-remove-targets-that-cannot-serve-a-request.md) | Declared capabilities remove targets that cannot serve a request |
 | [0020](0020-latency-ordered-routes-rank-only-what-eligibility-leaves.md) | Latency-ordered routes rank only what eligibility leaves |
 | [0021](0021-strengths-build-pools-at-load-time-and-never-remove-a-target.md) | Strengths build pools at load time and never remove a target |
+| [0023](0023-answers-that-describe-the-endpoint-make-it-unavailable.md) | Answers that describe the endpoint make it unavailable |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.

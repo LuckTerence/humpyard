@@ -182,13 +182,17 @@ often each rule fires and what each pool costs and how long it takes: tune the t
   [Endpoint health](#endpoint-health).
 - **Across targets**, if every endpoint of the selected target fails, the next target the
   algorithm returned is tried. By default falling through happens for a context-window overflow,
-  429, 403, 408, any 5xx, connection errors and timeouts. Other client errors (400, 401, 404) stop
-  at once and reach the client, because another target would reject the same request. If no
+  429, 403, 408, any 5xx, connection errors and timeouts, and on `fastest` and pool routes also for a 404 or
+  401 (`unavailable`). Other client errors stop at once and reach the client: a 400 or 422 because another
+  target would reject the same request, and on other routes a 404 or 401 unless the route opts in with
+  `fallback_on = ["unavailable"]`. If no
   target answers, the client gets the last error (a timeout is still reported as 504).
 - **Choosing what falls through.** A route can limit this with `fallback_on`, a list of failure
-  classes (`overflow`, `rate_limit`, `timeout`, `server_error`, `connection`, `forbidden`). A
-  failure outside the list ends the request and the client sees the original status and message.
-  `fallback_on = []` turns target fallback off. This keeps a paid last resort from being spent on
+  classes (`overflow`, `rate_limit`, `timeout`, `server_error`, `connection`, `forbidden`,
+  `unavailable`). A failure outside the list ends the request and the client sees the original status and
+  message. `fallback_on = []` turns target fallback off. Without a list every class falls through except
+  `unavailable` (a 404 or 401, or a 400 naming a missing model), which is included by default only on
+  `fastest` routes and pool routes and is opt-in everywhere else. A list is taken exactly as written. This keeps a paid last resort from being spent on
   a public blip:
 
   ```toml
@@ -435,8 +439,15 @@ After `failure_threshold` consecutive failures of the kind that trigger failover
 errors, timeouts, HTTP 408, 429, 5xx) an endpoint is skipped for `cooldown_secs`. Each time it
 trips again the cooldown doubles, up to `max_cooldown_secs`. When a cooldown ends, exactly one
 request is sent as a probe: success returns the endpoint to service at once and resets the
-cooldown; failure reopens it for longer. Other 4xx responses say nothing about the endpoint and are
-never counted.
+cooldown; failure reopens it for longer.
+
+Answers that describe the **endpoint** count too: a 404 (the model is gone there), a 401 or 403 (the key is
+rejected or may not use the model), and a 400 whose `error.code` or `error.type` is `model_not_found`,
+`model_not_available` or `model_decommissioned`. They cool the endpoint like a 5xx, on every route. Answers
+that describe the **request** (any other 400, and 422) say nothing about the endpoint and are never counted.
+A 404 or 401 also moves on to the next endpoint of the same target, and to the next target on `fastest` and
+pool routes (see [fallback](#choosing-what-falls-through) above), which is what keeps a pool of free models,
+some of them removed by their providers, from failing requests. Health still never denies service.
 
 ```toml
 [health]               # all optional; these are the defaults
