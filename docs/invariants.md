@@ -112,6 +112,13 @@ in an ADR (`docs/adr/`) in the same change.
     `a_failed_attempt_is_not_a_speed_sample_and_the_request_falls_over`); see
     [ADR-0020](adr/0020-latency-ordered-routes-rank-only-what-eligibility-leaves.md).
 
+21. **Strengths decide what a pool contains and nothing else.** A target's strengths are read only when a
+    pool route's membership is resolved, at configuration load; they never remove a target from a request,
+    and an undeclared context window never qualifies a target for a size-limited pool. *Enforced by*
+    `tests/strengths_pools.rs` (`a_strict_route_narrows_a_pool_per_request_and_never_widens_it`,
+    `a_minimum_window_counts_only_declared_windows_and_says_who_was_left_out`); see
+    [ADR-0021](adr/0021-strengths-build-pools-at-load-time-and-never-remove-a-target.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

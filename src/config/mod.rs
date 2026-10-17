@@ -1,6 +1,7 @@
 //! Gateway configuration: providers, targets and routes from one TOML file, with API keys read
 //! from the environment.
 
+mod pools;
 mod schema;
 #[cfg(test)]
 mod tests;
@@ -10,11 +11,13 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+pub use pools::{LeftOut, PoolReport};
 use schema::RawConfig;
 pub use schema::{
     ClassifierMode, ClassifyTrigger, Endpoint, FallbackClass, FallbackOn, OverBudget, PickerMode,
-    Price, PriceTier, Rates, RouteSpec, SelectorSpec, TokenRange, When,
+    PoolSpec, Price, PriceTier, Rates, RouteSpec, SelectorSpec, TokenRange, When,
 };
+use validate::invalid;
 pub use validate::{CREDENTIAL_HEADERS, QUOTA_SOURCES, parse_price_source};
 
 #[derive(Debug, thiserror::Error)]
@@ -62,6 +65,11 @@ pub struct Config {
     pub targets: BTreeMap<String, Vec<Endpoint>>,
     /// Optional class label per target (`private`, `public`, `paid`, or your own).
     pub target_classes: BTreeMap<String, String>,
+    /// Soft labels per target (only targets that declare some); they decide pool membership and
+    /// nothing else (ADR 0021).
+    pub target_strengths: BTreeMap<String, Vec<String>>,
+    /// How each pool route resolved when this configuration loaded.
+    pub pools: BTreeMap<String, PoolReport>,
     pub routes: BTreeMap<String, RouteSpec>,
     /// Virtual keys by id. Empty means the gateway is open and unbudgeted.
     pub keys: BTreeMap<String, KeyConfig>,
@@ -156,7 +164,7 @@ impl Config {
         env: impl Fn(&str) -> Option<String>,
     ) -> Result<Self, ConfigError> {
         validate::reject_plaintext_keys(text)?;
-        let raw: RawConfig = toml::from_str(text).map_err(|e| {
+        let mut raw: RawConfig = toml::from_str(text).map_err(|e| {
             let message = e.to_string();
             if message.contains("unknown field `api_key`") {
                 ConfigError::Parse(
@@ -167,6 +175,9 @@ impl Config {
                 ConfigError::Parse(message)
             }
         })?;
+        // Strengths are checked and pool routes get their targets before the rest is validated, so a
+        // pool is validated like a hand-written route (ADR 0021).
+        let pools = pools::resolve(&mut raw)?;
         validate::validate(&raw)?;
 
         let mut providers = BTreeMap::new();
@@ -204,6 +215,13 @@ impl Config {
                 .iter()
                 .filter_map(|(id, t)| Some((id.clone(), t.class.clone()?)))
                 .collect(),
+            target_strengths: raw
+                .targets
+                .iter()
+                .filter(|(_, t)| !t.strengths.is_empty())
+                .map(|(id, t)| (id.clone(), t.strengths.clone()))
+                .collect(),
+            pools,
             targets: raw
                 .targets
                 .into_iter()

@@ -208,6 +208,10 @@ pub(super) struct RawTarget {
     /// What kind of pool this is, for reporting: conventionally `private`, `public` or `paid`.
     /// A fallback between targets of different classes is flagged on decisions and in `explain`.
     pub(super) class: Option<String>,
+    /// Soft labels for what the model is good at (`coding`, `general`, ...). They only decide which
+    /// pool routes include the target; they never remove it from a request (ADR 0021).
+    #[serde(default)]
+    pub(super) strengths: Vec<String>,
 }
 
 fn default_quota_poll_secs() -> u64 {
@@ -503,12 +507,26 @@ impl FallbackOn {
     }
 }
 
+/// A pool: every target that carries `strength` (and, when set, declares a context window of at least
+/// `min_context_window`), resolved when the configuration loads (ADR 0021).
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PoolSpec {
+    pub strength: String,
+    #[serde(default)]
+    pub min_context_window: Option<u64>,
+}
+
 /// A built-in Switchyard algorithm over named targets.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RouteSpec {
     Passthrough {
+        #[serde(default)]
         targets: Vec<String>,
+        /// Take every target with a strength instead of listing them (resolved at load).
+        #[serde(default)]
+        pool: Option<PoolSpec>,
         /// Failures that move on to the next target; all of them when absent.
         #[serde(default)]
         fallback_on: Option<Vec<FallbackClass>>,
@@ -520,7 +538,11 @@ pub enum RouteSpec {
     /// Orders the targets that are still eligible by recently observed time to answer, fastest
     /// first, with some exploration (ADR 0020).
     Fastest {
+        #[serde(default)]
         targets: Vec<String>,
+        /// Take every target with a strength instead of listing them (resolved at load).
+        #[serde(default)]
+        pool: Option<PoolSpec>,
         /// Probability that a request tries a random eligible target first.
         #[serde(default = "default_explore")]
         explore: f64,
@@ -540,7 +562,12 @@ pub enum RouteSpec {
         allowed_classes: Option<Vec<String>>,
     },
     Random {
+        #[serde(default)]
         targets: Vec<String>,
+        /// Take every target with a strength instead of listing them (resolved at load); weights
+        /// cannot be combined with it.
+        #[serde(default)]
+        pool: Option<PoolSpec>,
         weights: Option<Vec<f64>>,
         seed: Option<u64>,
         /// Failures that move on to the next target; all of them when absent.
@@ -629,6 +656,23 @@ impl RouteSpec {
             | Self::LlmClassifier {
                 allowed_classes, ..
             } => allowed_classes.as_deref(),
+        }
+    }
+
+    /// For a route that can be a pool: its target list (filled in when the pool resolves), its pool
+    /// if it has one, and whether it carries per-target weights.
+    pub(super) fn pool_parts_mut(&mut self) -> Option<(&mut Vec<String>, Option<&PoolSpec>, bool)> {
+        match self {
+            Self::Passthrough { targets, pool, .. } | Self::Fastest { targets, pool, .. } => {
+                Some((targets, pool.as_ref(), false))
+            }
+            Self::Random {
+                targets,
+                pool,
+                weights,
+                ..
+            } => Some((targets, pool.as_ref(), weights.is_some())),
+            Self::StageRouter { .. } | Self::LlmClassifier { .. } => None,
         }
     }
 

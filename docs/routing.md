@@ -357,6 +357,40 @@ restart (SIGHUP, or `reload_poll_secs`); see [deployment.md](deployment.md#reloa
 A reload is all or nothing, in-flight requests keep the configuration they started with, and
 endpoint health and unchanged routes' session state carry over.
 
+## Pools and strengths
+
+A target can carry **strengths**: soft labels for what the model is good at, such as `coding`, `reasoning`,
+`general`, `fast` or `agentic`. A pool route takes every target with a strength instead of listing them.
+
+```toml
+[targets.groq-llama]
+class = "public"
+strengths = ["general", "fast"]
+endpoints = [{ provider = "groq", model = "llama-3.3-70b", context_window = 131072 }]
+
+[routes.free-general]
+type = "fastest"                  # also passthrough or random
+pool = { strength = "general", min_context_window = 32000 }
+```
+
+- **Resolved at load.** The members are worked out when the configuration loads or reloads and written into
+  the route's list in target-name order, so a pool is an ordinary route afterwards: strict classes, policy,
+  capabilities, health and [latency ordering](#fastest-routes) act on it unchanged. Nothing about strengths
+  is evaluated per request, and a strength never removes a target from a request. A reload that changes a
+  pool's membership logs `pool membership changed`.
+- **`min_context_window`** keeps only targets with an endpoint that declares at least that window. An
+  endpoint with no declared window does not qualify (you are asking which targets are *known* to be big
+  enough; contrast [capability removal](#capabilities), which acts only on certainty). `POST
+  /v1/route/explain` shows the pool's `members` and each target that has the strength but was left out, with
+  the reason `context_window_below` or `context_window_undeclared`.
+- **Rules.** A strength is 1 to 32 characters of lowercase letters, digits, `-` and `_`; a target has at most
+  8, with no repeats. `pool` cannot be combined with `targets` (or `weights`), takes one strength, and works on
+  `passthrough`, `fastest` and `random` routes. A pool that resolves to nothing is a configuration error
+  that lists the strengths that exist, so a typo fails at load.
+- **What strengths are not.** They are not capabilities (hard limits declared on endpoints) and not request
+  tags (`x-humpyard-tag-*`, which describe the request). See
+  [ADR 0021](adr/0021-strengths-build-pools-at-load-time-and-never-remove-a-target.md).
+
 ## Fastest routes
 
 A route of `type = "fastest"` lists `targets` like a passthrough route, but tries them by speed instead of
