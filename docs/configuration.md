@@ -10,7 +10,8 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   connection errors, timeouts, HTTP 429 and 5xx (not on other 4xx, and not once a stream has begun).
   Responses carry `x-humpyard-target` and `x-humpyard-provider` headers.
 - `[routes.<name>]`: a built-in Switchyard algorithm over targets, requested by clients as the
-  `model`: `passthrough`, `random` (weights, seed), `fastest` (eligible targets ordered by observed speed, with
+  `model`: `passthrough`, `random` (weights, seed), `pool = { strength, min_context_window }` in place of `targets` on `passthrough`, `fastest` and `random` (every
+  target with that [strength](routing.md#pools-and-strengths), resolved at load), `fastest` (eligible targets ordered by observed speed, with
   `explore`, `min_samples`, `max_age_secs`, `seed`; see [Fastest routes](routing.md#fastest-routes)),
   `stage_router` (tool-result signals pick
   efficient vs capable), or `llm_classifier` (`capability` judges task difficulty, `escalation`
@@ -22,6 +23,8 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   reads its prices; serving never uses it. See [Keeping prices current](budgets.md#keeping-prices-current).
 - `price = { input, output, cached_input, tiers }` on an endpoint (USD per million tokens;
   `tiers` raise the rates above a prompt size): see [Prices and cost](budgets.md#prices-and-cost).
+- `strengths = ["general", "fast"]` on a target (optional): soft labels (what the model is good at) that
+  decide which [pool routes](routing.md#pools-and-strengths) include it; they never remove it from a request.
 - `class = "private"` on a target (optional): a label (`private`, `public`, `paid`, or your own) that
   decisions and `explain` use to flag a fallback that crosses classes; see
   [Target classes](routing.md#target-classes).

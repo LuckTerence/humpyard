@@ -429,6 +429,7 @@ targets = ["a"]
             "moving".into(),
             crate::config::RouteSpec::Passthrough {
                 targets: vec!["b".into()],
+                pool: None,
                 fallback_on: None,
                 allowed_classes: None,
             },

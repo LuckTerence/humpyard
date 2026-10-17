@@ -144,6 +144,19 @@ fn plan_report(
             });
         }
     }
+    // A pool route: what it was asked to contain and who qualified (ADR 0021).
+    if let Some(pool) = snap.config.pools.get(route) {
+        report["pool"] = json!({
+            "strength": pool.strength,
+            "min_context_window": pool.min_context_window,
+            "members": pool.members,
+            "left_out": pool
+                .left_out
+                .iter()
+                .map(|l| json!({"target": l.target, "reason": l.reason}))
+                .collect::<Vec<_>>(),
+        });
+    }
     report["targets"] = Value::Array(
         models
             .iter()

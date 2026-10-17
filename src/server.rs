@@ -329,6 +329,7 @@ fn try_reload(state: &AppState, path: &std::path::Path) -> Result<String, String
         Config::from_toml(&text, |name| std::env::var(name).ok()).map_err(|e| e.to_string())?;
     let current = state.snapshot();
     restart_only_changes(&current.config, &config)?;
+    log_pool_changes(&current.config, &config);
     let fingerprint = fingerprint(&text);
     let next = Snapshot::build(
         config,
@@ -343,6 +344,22 @@ fn try_reload(state: &AppState, path: &std::path::Path) -> Result<String, String
     state.metrics.set_vocabulary(&next.config);
     *state.snapshot.write() = Arc::new(next);
     Ok(fingerprint)
+}
+
+/// Names, in the log, each pool route whose membership a reload changed (ADR 0021): a strength moved
+/// from one target to another reshapes a route without anyone editing it.
+fn log_pool_changes(old: &Config, new: &Config) {
+    for (route, pool) in &new.pools {
+        let before = old.pools.get(route).map(|p| &p.members);
+        if before != Some(&pool.members) {
+            tracing::info!(
+                route = %route,
+                strength = %pool.strength,
+                members = %pool.members.join(","),
+                "pool membership changed"
+            );
+        }
+    }
 }
 
 /// Settings a live process cannot change; a reload that touches one is refused as a whole.
