@@ -93,3 +93,62 @@ A rule MAY require `prompt_tokens` within inclusive `min` and `max` bounds of th
 #### Scenario: Invalid range
 - **WHEN** `prompt_tokens = { min = 10, max = 5 }`
 - **THEN** loading fails saying min is above max
+
+### Requirement: Fastest route
+The gateway SHALL support a route type `fastest` with `targets`, optional `explore` (a probability from 0 to 1, default 0.1), `min_samples` (default 3), `max_age_secs` (default 600), `seed`, `fallback_on` and `allowed_classes`. For each request it SHALL order the targets that remain eligible after class, policy, capability and health subtraction by their observed time to answer, fastest first, and attempt them in that order with the route's fallback.
+
+#### Scenario: The faster target is tried first
+- **WHEN** a `fastest` route has targets `a` and `b`, both measured, and `b` answers faster
+- **THEN** requests try `b` first and `a` only if `b` fails over
+
+#### Scenario: Unmeasured targets are tried early
+- **WHEN** a target has fewer than `min_samples` answered attempts, or its figure is older than `max_age_secs`
+- **THEN** it is ordered before measured targets, in the route's written order
+
+#### Scenario: Exploration
+- **WHEN** `explore` is 0.1 and the seeded draw selects exploration for a request
+- **THEN** a random eligible target is tried first and the rest follow in speed order, and `explore = 0` never explores
+
+#### Scenario: Ordering never adds a target
+- **WHEN** the fastest target is excluded by class, policy, capability or health
+- **THEN** it is not tried, however fast its figure
+
+### Requirement: What counts as a sample
+The gateway SHALL update a target's observed time only from answered attempts and SHALL keep it in memory as a smoothed figure with a sample count. Failed attempts SHALL NOT change it.
+
+#### Scenario: A failure is not a fast sample
+- **WHEN** an attempt on a target times out or returns a server error
+- **THEN** the target's figure and sample count are unchanged
+
+### Requirement: Order is visible
+The decision log SHALL record the order a `fastest` route used and whether the first target was chosen as fastest or by exploration, and route explain and statistics SHALL show each target's current figure and sample count.
+
+#### Scenario: Explain shows the figures
+- **WHEN** a client explains a `fastest` route
+- **THEN** each target lists its smoothed time and sample count, and the order a request would use now
+
+### Requirement: Pools are explainable
+Route explain SHALL report, for a pool route, its strength, its `min_context_window` when set, its members, and each target that carries the strength but was left out with the reason (`context_window_below` or `context_window_undeclared`).
+
+#### Scenario: Explain shows why a target is missing
+- **WHEN** a client explains a pool route and a target with the strength was left out for an undeclared window
+- **THEN** the report lists that target with the reason `context_window_undeclared`
+
+### Requirement: Quality-weighted ordering
+A `fastest` route SHALL accept `quality_weight` from 0 to 1 (default 0) and `latency_target_ms` (default 2000, at least 1). With a weight of 0 the order SHALL be exactly the speed ordering. With a weight `w` above 0, each target with a trustworthy speed figure SHALL be ranked by `score = (1 - w) * speed + w * quality`, where `speed = min(1, latency_target_ms / observed_ms)` and `quality` is the declared quality, or the route's `unknown_quality` (default 0.5) when none is declared; ties SHALL break by observed speed, then written order. Targets with too few samples or a stale figure SHALL still be tried first, and exploration SHALL be unchanged.
+
+#### Scenario: Weight zero is today's behavior
+- **WHEN** a route has no `quality_weight`
+- **THEN** its order is the speed ordering, whatever the targets' qualities
+
+#### Scenario: Quality outweighs a small speed gap
+- **WHEN** weight is 0.7 and a target with quality 0.8 answers in 600 ms while one with quality 0.4 answers in 300 ms (target 2000 ms)
+- **THEN** the first is tried first
+
+#### Scenario: A very slow strong model does not lead
+- **WHEN** a quality 0.9 target answers in 20000 ms and a quality 0.6 target in 800 ms, with weight 0.5
+- **THEN** the faster, weaker target is tried first
+
+#### Scenario: Explain shows the parts
+- **WHEN** a client explains a route with a weight
+- **THEN** each target shows its quality, speed score and score

@@ -87,3 +87,10 @@ The gateway SHALL treat reasoning tokens reported by a provider as part of that 
 #### Scenario: Totals after a restart
 - **WHEN** spend is rebuilt from the ledger after a restart
 - **THEN** reasoning tokens are not added to the rebuilt token totals
+
+### Requirement: Session queries are indexed
+The ledger SHALL keep an index over usage rows by session id and time, added by an in-place, idempotent schema upgrade that preserves every existing row.
+
+#### Scenario: Upgrading an older database
+- **WHEN** a database at the previous schema version is opened
+- **THEN** the index exists afterwards and all earlier rows are intact

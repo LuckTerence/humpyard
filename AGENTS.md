@@ -12,6 +12,12 @@ keep the old `x-conductor-*` header names as history; living specs and code use 
 - Spec-driven with **OpenSpec** (`openspec/`): propose changes with `/opsx:propose`, specs in
   `openspec/specs/`, active changes in `openspec/changes/`. Write specs before code.
 - Project constraints for OpenSpec artifacts live in `openspec/config.yaml`.
+- **Archive a change when it is done.** The PR that finishes a change's last task also runs
+  `openspec archive <name> --yes`, which moves it to `openspec/changes/archive/<date>-<name>/` and merges
+  its spec deltas into the living specs in `openspec/specs/`. A change that is spec-only, or has tasks
+  deliberately deferred, stays in `openspec/changes/` only while work remains; move deferred items to
+  [docs/roadmap.md](docs/roadmap.md) first. An ADR's `Change:` line names the change's original path, so look
+  for it under `archive/` (ADRs are immutable, so the line is not rewritten).
 - Workflow schema: `spec-driven-adr` (project-local, `openspec/schemas/`): proposal → specs → design →
   adr → tasks. The `adr` step records long-term architectural commitments as **immutable**,
   supersedable ADRs in `docs/adr/` (never edit an accepted ADR; add a new one that supersedes it).
