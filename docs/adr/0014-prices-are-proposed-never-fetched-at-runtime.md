@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-10-12
 - Supersedes: none
-- Change: [add-price-import](../../openspec/changes/add-price-import)
+- Change: [add-price-import](../../openspec/changes/archive/2026-10-17-add-price-import)
 
 ## Context
 

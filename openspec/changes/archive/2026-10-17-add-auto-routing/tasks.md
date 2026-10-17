@@ -26,6 +26,6 @@
 
 ## 5. Prerequisites for the demo and for cost-aware ordering
 
-- [ ] 5.1 Endpoint prices in real deployments so cost per request is meaningful
+- [x] 5.1 Endpoint prices in real deployments so cost per request is meaningful
 - [ ] 5.2 Demo: a real Claude Code or Codex session through an auto route, with before/after cost and latency from `/v1/stats`
 - [ ] 5.3 After weeks of statistics: a separate proposal for advisory cost-aware ordering inside the allowed set, with exploration

@@ -17,7 +17,8 @@ keep the old `x-conductor-*` header names as history; living specs and code use 
   its spec deltas into the living specs in `openspec/specs/`. A change that is spec-only, or has tasks
   deliberately deferred, stays in `openspec/changes/` only while work remains; move deferred items to
   [docs/roadmap.md](docs/roadmap.md) first. An ADR's `Change:` line names the change's original path, so look
-  for it under `archive/` (ADRs are immutable, so the line is not rewritten).
+  for it under `archive/`. ADRs stay immutable in what they decide; only a link to a moved change is repaired
+  (done for ADR 0014 and 0015), and the other lines are plain text left as written.
 - Workflow schema: `spec-driven-adr` (project-local, `openspec/schemas/`): proposal → specs → design →
   adr → tasks. The `adr` step records long-term architectural commitments as **immutable**,
   supersedable ADRs in `docs/adr/` (never edit an accepted ADR; add a new one that supersedes it).
