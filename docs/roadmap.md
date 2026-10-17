@@ -98,6 +98,14 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   on a target no more public than the request, stores only a score and a reason code (never content),
   and shows counts and spread in `/v1/stats`; calibrated against a stronger judge before it is trusted.
   Requests are grouped by task class (matching rule, tools, size), not by their text.
+- **An LLM `classify` route action**, only if the decision log shows a large catch-all share and a costly
+  default pool: a classifier call with a timeout and a fallback pool, where a slow, failing or inconclusive
+  classifier always falls back. Not built until the numbers ask for it.
+- **More price sources** for `prices import` and `check`: the OpenRouter models API and a hand-maintained
+  table, beside models.dev.
+- **Quota beyond one provider**: per-model quota where a provider publishes it, adapters for other providers,
+  and anything that acts on quota without an operator rule (advisory ordering), only after weeks of statistics.
+- **Metrics exporters** (OTLP) if asked for, beside the Prometheus endpoint.
 - **Cost-aware ordering** inside the set a route allows (its latency half moves up as step 2 of [Replacing ModelRelay](#replacing-modelrelay)), advisory first, after weeks of statistics
   and with quality signals in them; it needs exploration, so a model that scored badly once still
   gets looked at again.

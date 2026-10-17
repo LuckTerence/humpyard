@@ -3,7 +3,7 @@
 - Status: accepted
 - Date: 2026-10-13
 - Supersedes: none
-- Change: [add-quota-routing](../../openspec/changes/add-quota-routing)
+- Change: [add-quota-routing](../../openspec/changes/archive/2026-10-17-add-quota-routing)
 
 ## Context
 

@@ -15,11 +15,11 @@
 
 ## 3. Operations and docs
 
-- [ ] 3.1 Scheduled drift check for the cluster (CronJob report only, in the private config repo)
-- [ ] 3.2 Docs: configuration, budgets (what cost means on a flat-fee plan), deployment (running the check); example config
+- [x] 3.1 Scheduled drift check for the cluster (CronJob report only, in the private config repo)
+- [x] 3.2 Docs: configuration, budgets (what cost means on a flat-fee plan), deployment (running the check); example config
 - [x] 3.3 A test or invariant that `serve` makes no price-source requests
 
 ## 4. Later, separate proposals
 
-- [ ] 4.1 Provider quota polling (for example remaining quota windows) feeding routing, once the importer exists
+- [x] 4.1 Provider quota polling (for example remaining quota windows) feeding routing, once the importer exists
 - [ ] 4.2 Additional adapters (OpenRouter models API, hand-maintained table)

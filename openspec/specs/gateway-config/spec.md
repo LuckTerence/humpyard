@@ -93,3 +93,88 @@ The config MAY contain a `[health]` section with `failure_threshold` (default 3)
 #### Scenario: Invalid
 - **WHEN** `max_cooldown_secs` is below `cooldown_secs`
 - **THEN** loading fails naming `max_cooldown_secs`
+
+### Requirement: Target strengths
+A target MAY declare `strengths`: a list of at most 8 labels, each 1 to 32 characters of lowercase letters, digits, `-` and `_`, with no duplicates. Strengths SHALL NOT affect any request except through the pool routes that name them, and SHALL NOT remove a target from a request.
+
+#### Scenario: Declared strengths
+- **WHEN** a target declares `strengths = ["coding", "general"]`
+- **THEN** the configuration loads and the target is a candidate for pools named `coding` and `general`
+
+#### Scenario: Invalid strengths
+- **WHEN** a strength is empty, longer than 32 characters, contains an uppercase letter or a space, is repeated on a target, or a target lists more than 8
+- **THEN** the configuration is rejected with a message naming the target and the strength
+
+### Requirement: Pool routes
+A `passthrough`, `fastest` or `random` route SHALL accept `pool = { strength = "...", min_context_window = N }` in place of `targets`, with `min_context_window` optional. The route's targets SHALL be every target that carries the strength and, when a window is given, has at least one endpoint declaring a `context_window` of at least that value, resolved when the configuration is loaded or reloaded and ordered by target name. `pool` and `targets` SHALL NOT be combined, and `weights` SHALL NOT be combined with `pool`.
+
+#### Scenario: Resolved at load
+- **WHEN** targets `a`, `b` and `c` carry `general` and `d` does not, and a route has `pool = { strength = "general" }`
+- **THEN** the route's targets are `a`, `b`, `c` and a request to the route never considers `d`
+
+#### Scenario: Minimum context window
+- **WHEN** a pool sets `min_context_window = 32000` and target `a` declares a 64000 window, `b` declares 8000 and `c` declares none
+- **THEN** only `a` is a member, and `b` and `c` are reported as left out with the reason
+
+#### Scenario: Empty pool
+- **WHEN** no target carries the pool's strength, or none qualifies
+- **THEN** the configuration is rejected naming the strength and listing the strengths that exist
+
+#### Scenario: Reload changes membership
+- **WHEN** a reload adds the strength to another target
+- **THEN** the route is rebuilt with the new membership and the reload log names the pool whose membership changed
+
+#### Scenario: Strengths never refuse a request
+- **WHEN** a request is served by a pool route
+- **THEN** the only removals are the usual per-request ones (class, policy, capability, health); strengths remove nothing
+
+### Requirement: Two switches
+Discovery SHALL be off unless `[discovery] enabled` is true (which requires `file`) and the provider has `discover` with `enabled` true (the default). With the master switch off the generated file SHALL NOT be read and `models sync` SHALL refuse to write; a provider with `enabled = false` SHALL have its generated targets skipped by the loader at once and removed by the next sync.
+
+#### Scenario: Master switch off
+- **WHEN** `[discovery] file` is set and `enabled` is false or absent
+- **THEN** the file is not merged, the state is reported as disabled, and `models sync` exits 2 naming the switch
+
+#### Scenario: One provider opts out
+- **WHEN** two providers have generated targets and one sets `discover.enabled = false`
+- **THEN** the other provider's targets still load and the opted-out provider's are skipped
+
+### Requirement: Discovery opt-in and settings
+A provider MAY set `discover = { strengths = [...], confirm = true }` (requires `price_source`), and the configuration MAY have `[discovery]` with `file`, `class` (default `public`), `max_added_per_run` (default 10), `max_removed_fraction` (default 0.5) and `exclude` (a list of `provider/model` ids).
+
+#### Scenario: Opting in without a source
+- **WHEN** a provider sets `discover` but not `price_source`
+- **THEN** the configuration is rejected naming the provider
+
+### Requirement: The generated file is merged, strictly, and fails safe
+When `[discovery] file` names a file, `serve` SHALL parse it at load and on every reload and merge its targets, accepting it only if it contains nothing but `[targets.auto-*]` on providers that exist and have `discover` set, no more than 500 targets, no (provider, model) pair that a hand-written target already uses, and every endpoint priced at zero. A file that does not meet this, or is missing or empty, SHALL be ignored with a log line and a gauge, and the gateway SHALL serve with the main configuration alone. `serve` SHALL NOT fetch any data to do this.
+
+#### Scenario: A valid generated file
+- **WHEN** the file holds `auto-groq-x` with the strength `general`
+- **THEN** a pool of `general` includes it after the next reload
+
+#### Scenario: An invalid generated file
+- **WHEN** the file contains a table other than a target, or a priced endpoint
+- **THEN** it is ignored in full and the gateway serves with the main configuration
+
+#### Scenario: Reload sees the file
+- **WHEN** only the generated file changes
+- **THEN** the gateway reloads
+
+### Requirement: Generated targets are visible
+Generated targets SHALL be named `auto-*`, SHALL be marked as generated in `route/explain`, and the number loaded and the file's state SHALL be exposed as metrics.
+
+#### Scenario: Explain marks them
+- **WHEN** a client explains a route whose pool includes a generated target
+- **THEN** the target is reported with `generated = true`
+
+### Requirement: Declared quality
+A target MAY declare `quality`, a number from 0 to 1. A pool MAY set `min_quality`; its members SHALL be the targets that carry the strength, satisfy any `min_context_window`, and declare a `quality` of at least `min_quality`. A target with no declared quality SHALL NOT qualify, and SHALL be reported as left out with the reason `quality_undeclared` (or `quality_below`).
+
+#### Scenario: A quality floor
+- **WHEN** targets declare qualities 0.7, 0.5 and none, and a pool sets `min_quality = 0.6`
+- **THEN** only the first is a member, and explain lists the others with `quality_below` and `quality_undeclared`
+
+#### Scenario: Out of range
+- **WHEN** a quality is below 0 or above 1, or `min_quality` is
+- **THEN** the configuration is rejected naming the target or route
