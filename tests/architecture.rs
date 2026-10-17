@@ -89,7 +89,7 @@ fn rules() -> BTreeMap<&'static str, Module> {
                 &["clock", "config", "error", "health", "retry_after"],
             ),
         ),
-        ("routing", module(Engine, &["config", "latency"])),
+        ("routing", module(Engine, &["config", "latency", "num"])),
         (
             "metering",
             module(

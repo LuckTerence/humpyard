@@ -51,6 +51,16 @@ Clients keep their model strings: the route names are the ModelRelay names, so a
 variant is written only when some target qualifies (an empty pool is a configuration error), and only
 models that **declare** a window count toward `min_ctx`.
 
+## Quality scores
+
+ModelRelay ranks by a blend of speed and a quality score per model. `migrate-modelrelay` carries a score as the
+target's `quality` **only when ModelRelay marks it as measured** (its benchmark index); an estimate, which is
+ModelRelay's guess from a model's metadata, is written as a comment and not declared, because a declared
+quality is a fact that pool floors and rankings rely on. On the reference instance 23 of 53 usable models are
+measured. `--estimated-quality` declares the estimates too. To get ModelRelay's behaviour of preferring
+capable models, give your `fastest` routes a `quality_weight` (for example 0.5) and, where you want a floor,
+a pool `min_quality`; targets with no declared quality rank as neutral and do not qualify for a floor.
+
 ## What does not carry over
 
 The report lists each of these, with the reason:

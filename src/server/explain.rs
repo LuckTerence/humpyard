@@ -137,7 +137,8 @@ fn plan_report(
     // exploration, which is a per-request draw) and how often it explores.
     if let Some(route) = snap.routes.get(route) {
         let names: Vec<String> = models.iter().map(ToString::to_string).collect();
-        if let Some(ranked) = route.speed_order(latency, &names) {
+        let quality = |target: &str| snap.config.target_quality.get(target).copied();
+        if let Some(ranked) = route.speed_order(latency, &names, &quality) {
             models = ranked
                 .order
                 .iter()
@@ -147,6 +148,14 @@ fn plan_report(
                 "type": "fastest",
                 "order": ranked.order,
                 "explore": route.explore(),
+                "quality_weight": route.quality_weight(),
+                "scores": ranked.scores.iter().map(|s| json!({
+                    "target": s.target,
+                    "observed_ms": s.observed_ms,
+                    "speed": s.speed,
+                    "quality": s.quality,
+                    "score": s.score,
+                })).collect::<Vec<_>>(),
             });
         }
     }
@@ -155,6 +164,7 @@ fn plan_report(
         report["pool"] = json!({
             "strength": pool.strength,
             "min_context_window": pool.min_context_window,
+            "min_quality": pool.min_quality,
             "members": pool.members,
             "left_out": pool
                 .left_out
@@ -397,6 +407,7 @@ fn target_report(
         "class": snap.config.target_classes.get(name.as_str()),
         "cold": super::is_cold(snap, name.as_str()),
         "generated": snap.config.generated_targets.contains(name.as_str()),
+        "quality": snap.config.target_quality.get(name.as_str()),
         "current_latency_ms": figure.map(|f| f.ms),
         "latency_samples": figure.map(|f| f.samples),
         "endpoints": endpoints,

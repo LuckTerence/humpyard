@@ -24,7 +24,9 @@
     "capped": false,
     "usable": true,
     "reason": "reported"
-   }
+   },
+   "intell": 0.741,
+   "isEstimatedScore": false
   },
   {
    "modelId": "deepseek-ai/deepseek-v3.2",
@@ -37,7 +39,9 @@
     "coding"
    ],
    "status": "up",
-   "hidden": false
+   "hidden": false,
+   "intell": 0.72,
+   "isEstimatedScore": false
   },
   {
    "modelId": "llama-3.3-70b-versatile",
@@ -47,7 +51,9 @@
     "general",
     "fast"
    ],
-   "status": "up"
+   "status": "up",
+   "intell": 0.58,
+   "isEstimatedScore": true
   },
   {
    "modelId": "qwen-3-coder-480b",
@@ -56,7 +62,9 @@
    "tags": [
     "coding"
    ],
-   "status": "down"
+   "status": "down",
+   "intell": 0.6,
+   "isEstimatedScore": true
   },
   {
    "modelId": "gpt-oss-120b",
@@ -72,7 +80,9 @@
     "capped": false,
     "usable": true,
     "reason": "reported"
-   }
+   },
+   "intell": 0.693,
+   "isEstimatedScore": false
   },
   {
    "modelId": "qwen-3-235b-a22b-instruct",

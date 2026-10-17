@@ -329,3 +329,65 @@ async fn a_migrated_pool_route_serves_requests() {
         assert_eq!(resp.status(), 200, "{route}");
     }
 }
+
+#[test]
+fn only_measured_scores_become_a_declared_quality() {
+    let out = offline(&[]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let fragment = text(&out.stdout);
+    // Measured scores are declared on their targets.
+    let nvidia = fragment
+        .split("[targets.nvidia-meta-llama-3-3-70b-instruct]")
+        .nth(1)
+        .and_then(|rest| rest.split("\n\n").next())
+        .unwrap();
+    assert!(nvidia.contains("quality = 0.741"), "{nvidia}");
+    assert!(
+        fragment.contains("quality = 0.72") && fragment.contains("quality = 0.693"),
+        "{fragment}"
+    );
+    // An estimate is a comment, not a fact.
+    assert!(
+        fragment.contains("estimated quality 0.58 is not declared"),
+        "{fragment}"
+    );
+    let declared: Vec<&str> = fragment
+        .lines()
+        .filter(|l| l.starts_with("quality = "))
+        .collect();
+    assert_eq!(
+        declared.len(),
+        3,
+        "only the three measured scores: {declared:?}"
+    );
+    assert!(
+        !declared.contains(&"quality = 0.58") && !declared.contains(&"quality = 0.6"),
+        "{declared:?}"
+    );
+    let report = text(&out.stderr);
+    assert!(
+        report.contains("3 of ") && report.contains("targets declare a quality"),
+        "{report}"
+    );
+    // And the fragment still loads with the new field.
+    let header = "listen = \"127.0.0.1:0\"\n";
+    Config::from_toml(&format!("{header}{fragment}"), |_| Some("k".into())).unwrap();
+}
+
+#[test]
+fn the_estimated_quality_flag_declares_the_estimates_too() {
+    let out = offline(&["--estimated-quality"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let fragment = text(&out.stdout);
+    let declared: Vec<&str> = fragment
+        .lines()
+        .filter(|l| l.starts_with("quality = "))
+        .collect();
+    assert_eq!(declared.len(), 5, "{declared:?}");
+    assert!(
+        declared.contains(&"quality = 0.58") && declared.contains(&"quality = 0.6"),
+        "{declared:?}"
+    );
+    assert!(!fragment.contains("is not declared"), "{fragment}");
+    assert!(text(&out.stderr).contains("5 of "), "{}", text(&out.stderr));
+}

@@ -12,10 +12,11 @@ const MAX_STRENGTHS: usize = 8;
 const MAX_LABEL_LEN: usize = 32;
 
 /// How one pool route resolved: who is in, and who carries the strength but was left out.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PoolReport {
     pub strength: String,
     pub min_context_window: Option<u64>,
+    pub min_quality: Option<f64>,
     /// Target names, in the order the route uses as its list (sorted).
     pub members: Vec<String>,
     pub left_out: Vec<LeftOut>,
@@ -25,7 +26,7 @@ pub struct PoolReport {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeftOut {
     pub target: String,
-    /// `context_window_below` or `context_window_undeclared`.
+    /// `context_window_below`, `context_window_undeclared`, `quality_below` or `quality_undeclared`.
     pub reason: &'static str,
 }
 
@@ -62,6 +63,11 @@ pub(super) fn validate_strengths(target: &str, strengths: &[String]) -> Result<(
 pub(super) fn resolve(raw: &mut RawConfig) -> Result<BTreeMap<String, PoolReport>, ConfigError> {
     for (id, target) in &raw.targets {
         validate_strengths(id, &target.strengths)?;
+        if target.quality.is_some_and(|q| !(0.0..=1.0).contains(&q)) {
+            return Err(invalid(format!(
+                "target `{id}`: `quality` must be between 0 and 1"
+            )));
+        }
     }
     let mut reports = BTreeMap::new();
     let RawConfig {
@@ -89,6 +95,7 @@ pub(super) fn resolve(raw: &mut RawConfig) -> Result<BTreeMap<String, PoolReport
         let mut report = PoolReport {
             strength: pool.strength.clone(),
             min_context_window: pool.min_context_window,
+            min_quality: pool.min_quality,
             members: Vec::new(),
             left_out: Vec::new(),
         };
@@ -96,7 +103,7 @@ pub(super) fn resolve(raw: &mut RawConfig) -> Result<BTreeMap<String, PoolReport
             if !target.strengths.contains(&pool.strength) {
                 continue;
             }
-            match qualifies(pool.min_context_window, target) {
+            match qualifies(pool.min_context_window, pool.min_quality, target) {
                 Ok(()) => report.members.push(name.clone()),
                 Err(reason) => report.left_out.push(LeftOut {
                     target: name.clone(),
@@ -127,27 +134,43 @@ fn check_pool(route_id: &str, pool: &PoolSpec) -> Result<(), ConfigError> {
             "route `{route_id}`: `min_context_window` must be at least 1"
         )));
     }
+    if pool.min_quality.is_some_and(|q| !(0.0..=1.0).contains(&q)) {
+        return Err(invalid(format!(
+            "route `{route_id}`: `min_quality` must be between 0 and 1"
+        )));
+    }
     Ok(())
 }
 
 /// Whether a target meets a pool's minimum window: some endpoint declares at least that window. An
 /// undeclared window does not qualify (this is selection by the operator, not request-time removal).
-fn qualifies(min: Option<u64>, target: &super::schema::RawTarget) -> Result<(), &'static str> {
-    let Some(min) = min else {
-        return Ok(());
-    };
-    let declared: Vec<u64> = target
-        .endpoints
-        .iter()
-        .filter_map(|e| e.context_window)
-        .collect();
-    if declared.iter().any(|window| *window >= min) {
-        Ok(())
-    } else if declared.is_empty() {
-        Err("context_window_undeclared")
-    } else {
-        Err("context_window_below")
+fn qualifies(
+    min_window: Option<u64>,
+    min_quality: Option<f64>,
+    target: &super::schema::RawTarget,
+) -> Result<(), &'static str> {
+    if let Some(min) = min_window {
+        let declared: Vec<u64> = target
+            .endpoints
+            .iter()
+            .filter_map(|e| e.context_window)
+            .collect();
+        if declared.is_empty() {
+            return Err("context_window_undeclared");
+        }
+        if !declared.iter().any(|window| *window >= min) {
+            return Err("context_window_below");
+        }
     }
+    // Likewise a quality the operator has not stated does not qualify for a quality floor.
+    if let Some(min) = min_quality {
+        match target.quality {
+            None => return Err("quality_undeclared"),
+            Some(quality) if quality < min => return Err("quality_below"),
+            Some(_) => {}
+        }
+    }
+    Ok(())
 }
 
 fn empty_pool_message(

@@ -43,3 +43,16 @@ looks slower) and, for streamed calls, measures when the answer began, not when 
 nothing about quality, so a pool should hold targets of comparable capability. Ordering ranks the eligible
 set and never adds a target back, so strict routes, capability removal and health skipping hold exactly as
 before. Decisions gain a stored `ranking` field holding target names and a reason, never content.
+
+## Amended 2026-10-17: an optional quality weight
+
+A `fastest` route may take `quality_weight` (0 to 1, default 0), `latency_target_ms` (default 2000) and
+`unknown_quality` (default 0.5). With a weight above 0, each measured target is ranked by
+`(1 - w) * speed + w * quality`, with `speed = min(1, latency_target_ms / observed_ms)` and `quality` the
+target's declared `quality` (a number from 0 to 1 the operator states; never fetched), ties by observed speed.
+With the weight at 0 the order is exactly the speed order, so existing routes do not change. Unmeasured
+targets still go first, exploration is unchanged, and ordering still only ranks what eligibility left. A pool
+may also set `min_quality`, a load-time floor like `min_context_window` (an undeclared quality does not
+qualify). `migrate-modelrelay` declares only ModelRelay's measured scores. The formula is a deliberate blend
+an operator can read, not ModelRelay's product-plus-speed.
+

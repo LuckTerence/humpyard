@@ -382,6 +382,10 @@ pool = { strength = "general", min_context_window = 32000 }
   capabilities, health and [latency ordering](#fastest-routes) act on it unchanged. Nothing about strengths
   is evaluated per request, and a strength never removes a target from a request. A reload that changes a
   pool's membership logs `pool membership changed`.
+- **`min_quality`** (0 to 1) keeps only targets whose declared `quality` is at least that, resolved at load
+  like the window: a target that declares no quality does not qualify, and `explain` reports it as left out
+  with `quality_undeclared` (or `quality_below`). A `quality` is a number the operator states on the target
+  (`quality = 0.74`), for example a benchmark score they trust; it is never fetched at runtime.
 - **`min_context_window`** keeps only targets with an endpoint that declares at least that window. An
   endpoint with no declared window does not qualify (you are asking which targets are *known* to be big
   enough; contrast [capability removal](#capabilities), which acts only on certainty). `POST
@@ -409,6 +413,9 @@ explore = 0.1       # share of requests that try a random eligible target first 
 min_samples = 3     # answered attempts before a target's figure is believed (default 3)
 max_age_secs = 600  # a figure older than this counts as unmeasured (default 600)
 seed = 7            # optional: makes the exploration draws reproducible
+# quality_weight = 0.5        # blend declared quality with speed (default 0: speed only)
+# latency_target_ms = 2000    # the answer time that earns full speed marks
+# unknown_quality = 0.5       # the quality assumed for a target that declares none
 ```
 
 - **What is ranked.** Only the targets still eligible after [strict classes](#strict-routes), policy,
@@ -419,6 +426,16 @@ seed = 7            # optional: makes the exploration draws reproducible
   upstream answered: the full time for a buffered call, and until the response began for a streamed one.
   Only answered attempts update it; a failed attempt does not make a target look fast or slow, because
   failures are what health tracking is for. A restart starts empty.
+- **Weighing quality.** By default the order is purely by speed, so a small quick model can lead a pool.
+  `quality_weight` (0 to 1, default 0) blends in the declared `quality`: each measured target is scored
+  `(1 - w) * speed + w * quality`, where `speed = min(1, latency_target_ms / observed_ms)` (so a target
+  at or under `latency_target_ms`, default 2000, gets full marks and a slower one falls off in proportion)
+  and a target that declares no quality counts as `unknown_quality` (default 0.5). Targets are tried by
+  descending score, ties by observed speed. With the weight at 0 the order is exactly the speed order, so no
+  existing route changes. A strong model that is somewhat slower leads a weak quick one, but a very slow one
+  still loses: at weight 0.5, quality 0.9 at 20 s scores 0.5, below quality 0.6 at 0.8 s scoring 0.8.
+  `explain` shows each target's quality, speed score and score. Unmeasured targets are still tried first so
+  they get measured, and exploration is unchanged.
 - **Unmeasured targets go first,** in the order written, so a new target is measured before it is judged,
   and a figure older than `max_age_secs` counts as unmeasured, so a target that was slow ten minutes ago
   and has been idle since gets another look. A fresh gateway therefore behaves like a passthrough route

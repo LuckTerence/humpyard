@@ -85,6 +85,13 @@ pub struct ModelRow {
     pub status: Option<String>,
     #[serde(default)]
     pub hidden: bool,
+    /// ModelRelay's quality score for the model, 0 to 1.
+    #[serde(default)]
+    pub intell: Option<f64>,
+    /// Whether that score is an estimate (from metadata) and not a measured benchmark; absent means unknown,
+    /// which is treated as an estimate.
+    #[serde(default)]
+    pub is_estimated_score: Option<bool>,
 }
 
 /// ModelRelay's `ctxInfo`: the context window it uses for `min_ctx` routing.
@@ -113,6 +120,27 @@ impl ModelRow {
             serde_json::Value::Number(n) => n.as_u64().filter(|t| *t > 0),
             serde_json::Value::String(text) => parse_size(text),
             _ => None,
+        }
+    }
+}
+
+impl ModelRow {
+    /// `(declared, estimate_only)`: a score ModelRelay measured is declared as the target's quality; an
+    /// estimate is declared only when `include_estimates`, and otherwise returned for a comment.
+    fn quality(&self, include_estimates: bool) -> (Option<f64>, Option<f64>) {
+        let Some(score) = self
+            .intell
+            .filter(|s| s.is_finite() && (0.0..=1.0).contains(s))
+        else {
+            return (None, None);
+        };
+        // Round to three places: the score is a benchmark index, not a measurement to the last digit.
+        let score = (score * 1000.0).round() / 1000.0;
+        let measured = self.is_estimated_score == Some(false);
+        if measured || include_estimates {
+            (Some(score), None)
+        } else {
+            (None, Some(score))
         }
     }
 }
@@ -164,6 +192,8 @@ pub struct Options {
     pub class: String,
     /// Minimum context windows to also generate `+min_ctx:N` routes for.
     pub min_ctx: Vec<u64>,
+    /// Declare ModelRelay's estimated scores as `quality` too (by default only measured ones are).
+    pub estimated_quality: bool,
 }
 
 /// What was carried over and what was not.
@@ -174,6 +204,8 @@ pub struct Report {
     pub routes: usize,
     /// Things that did not carry over, each with the reason.
     pub skipped: Vec<String>,
+    /// How many generated targets declare a `quality`.
+    pub with_quality: usize,
     /// Things to do by hand after merging.
     pub todo: Vec<String>,
 }
@@ -295,6 +327,10 @@ struct TargetPlan {
     model: String,
     ctx: Option<u64>,
     strengths: Vec<String>,
+    /// A measured quality, declared on the target.
+    quality: Option<f64>,
+    /// ModelRelay's estimate, kept as a comment unless `--estimated-quality`.
+    estimated: Option<f64>,
 }
 
 /// The providers humpyard can call, by ModelRelay key; the flag records that a model used one.
@@ -341,7 +377,12 @@ fn select_providers(providers: &[ProviderRow], report: &mut Report) -> Used {
 }
 
 /// One target per usable model, named uniquely, sorted by name.
-fn plan_targets(models: &[ModelRow], used: &mut Used, report: &mut Report) -> Vec<TargetPlan> {
+fn plan_targets(
+    models: &[ModelRow],
+    used: &mut Used,
+    report: &mut Report,
+    options: &Options,
+) -> Vec<TargetPlan> {
     let mut targets: Vec<TargetPlan> = Vec::new();
     let mut taken: BTreeSet<String> = BTreeSet::new();
     let mut unknown_tags: BTreeSet<String> = BTreeSet::new();
@@ -400,12 +441,15 @@ fn plan_targets(models: &[ModelRow], used: &mut Used, report: &mut Report) -> Ve
             name = format!("{base}-{n}");
             n += 1;
         }
+        let (quality, estimated) = model.quality(options.estimated_quality);
         targets.push(TargetPlan {
             name,
             provider: resolved.name.clone(),
             model: model.model_id.clone(),
             ctx: model.window(),
             strengths,
+            quality,
+            estimated,
         });
     }
     let mut by_reason: BTreeMap<&str, Vec<(String, usize)>> = BTreeMap::new();
@@ -434,7 +478,7 @@ fn plan_targets(models: &[ModelRow], used: &mut Used, report: &mut Report) -> Ve
 pub fn migrate(providers: &[ProviderRow], models: &[ModelRow], options: &Options) -> Migration {
     let mut report = Report::default();
     let mut used = select_providers(providers, &mut report);
-    let targets = plan_targets(models, &mut used, &mut report);
+    let targets = plan_targets(models, &mut used, &mut report, options);
 
     let mut out = String::new();
     out.push_str(
@@ -464,6 +508,7 @@ pub fn migrate(providers: &[ProviderRow], models: &[ModelRow], options: &Options
         render_target(&mut out, target, &options.class);
     }
     report.targets = targets.len();
+    report.with_quality = targets.iter().filter(|t| t.quality.is_some()).count();
     report.routes = render_routes(&mut out, &targets, options, &mut report.skipped);
     Migration {
         fragment: out,
@@ -476,6 +521,15 @@ fn render_target(out: &mut String, target: &TargetPlan, class: &str) {
     let _ = writeln!(out, "class = {}", quoted(class));
     let strengths: Vec<String> = target.strengths.iter().map(|s| quoted(s)).collect();
     let _ = writeln!(out, "strengths = [{}]", strengths.join(", "));
+    if let Some(quality) = target.quality {
+        let _ = writeln!(out, "quality = {quality}");
+    } else if let Some(estimate) = target.estimated {
+        let _ = writeln!(
+            out,
+            "# ModelRelay's estimated quality {estimate} is not declared (its guess, not a measurement); \
+             add `quality = {estimate}` by hand or migrate with --estimated-quality"
+        );
+    }
     let window = target
         .ctx
         .map(|c| format!(", context_window = {c}"))
@@ -617,6 +671,7 @@ mod tests {
         Options {
             class: "public".into(),
             min_ctx: min_ctx.to_vec(),
+            estimated_quality: false,
         }
     }
 

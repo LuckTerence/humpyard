@@ -117,6 +117,9 @@ struct MigrateArgs {
     /// Write the fragment here instead of stdout; refused if the file exists.
     #[arg(long)]
     out: Option<PathBuf>,
+    /// Declare ModelRelay's estimated quality scores too (by default only measured ones become `quality`).
+    #[arg(long)]
+    estimated_quality: bool,
 }
 
 #[derive(clap::Args)]
@@ -349,6 +352,7 @@ async fn migrate_command(args: MigrateArgs) -> Result<(), String> {
         &migrate::Options {
             class: args.class,
             min_ctx: args.min_ctx,
+            estimated_quality: args.estimated_quality,
         },
     );
     migrate::self_check(&migration.fragment)
@@ -375,6 +379,10 @@ async fn migrate_command(args: MigrateArgs) -> Result<(), String> {
     eprintln!(
         "\nmigrated {} providers, {} targets, {} routes; the fragment loads.",
         r.providers, r.targets, r.routes
+    );
+    eprintln!(
+        "{} of {} targets declare a quality (measured scores only; --estimated-quality includes ModelRelay's estimates).",
+        r.with_quality, r.targets
     );
     if !r.skipped.is_empty() {
         eprintln!("not carried over:");
