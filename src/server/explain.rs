@@ -390,6 +390,7 @@ fn target_report(
         "target": name.to_string(),
         "class": snap.config.target_classes.get(name.as_str()),
         "cold": super::is_cold(snap, name.as_str()),
+        "generated": snap.config.generated_targets.contains(name.as_str()),
         "current_latency_ms": figure.map(|f| f.ms),
         "latency_samples": figure.map(|f| f.samples),
         "endpoints": endpoints,

@@ -87,7 +87,41 @@ fn scraped(state: &AppState, snap: &Snapshot) -> Vec<Family> {
         ));
     }
     families.extend(quota(state, snap));
+    families.extend(discovery(snap));
     families
+}
+
+/// The generated targets file (ADR 0022): how many targets it merged and what became of it. Present only
+/// when a file is configured.
+fn discovery(snap: &Snapshot) -> Vec<Family> {
+    const STATES: [&str; 4] = ["missing", "empty", "loaded", "ignored"];
+    if snap.config.discovery.file.is_none() {
+        return Vec::new();
+    }
+    let current = snap.config.discovery_state.as_str();
+    vec![
+        metrics::gauge(
+            "discovery_targets",
+            "Generated targets merged from the discovery file at the last load.",
+            vec![(
+                vec![],
+                Value::Int(u64::try_from(snap.config.discovery_state.loaded()).unwrap_or(u64::MAX)),
+            )],
+        ),
+        metrics::gauge(
+            "discovery_file_state",
+            "State of the generated targets file at the last load: 1 for the state it is in (an ignored file means the main configuration is serving alone).",
+            STATES
+                .iter()
+                .map(|state| {
+                    (
+                        vec![("state", (*state).to_string())],
+                        Value::Int(u64::from(*state == current)),
+                    )
+                })
+                .collect(),
+        ),
+    ]
 }
 
 /// The smoothed time to answer of each configured target that has answered: what `fastest` routes

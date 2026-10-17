@@ -40,9 +40,72 @@ pub(super) struct RawConfig {
     /// The Prometheus `/metrics` endpoint (off by default).
     #[serde(default)]
     pub(super) metrics: RawMetrics,
+    /// Model discovery settings (ADR 0022): where the generated targets file is and its limits.
+    #[serde(default)]
+    pub(super) discovery: RawDiscovery,
     /// Ordered rules choosing the route from request facts (`[[select]]`).
     #[serde(default)]
     pub(super) select: Vec<SelectorSpec>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RawDiscovery {
+    /// The file `humpyard models sync` writes and `serve` reads. Use an absolute path.
+    pub(super) file: Option<std::path::PathBuf>,
+    /// The `class` of every generated target.
+    #[serde(default = "default_discovery_class")]
+    pub(super) class: String,
+    /// The most targets one sync run may add.
+    #[serde(default = "default_max_added_per_run")]
+    pub(super) max_added_per_run: u32,
+    /// A sync run that would remove more than this share of the generated targets is refused.
+    #[serde(default = "default_max_removed_fraction")]
+    pub(super) max_removed_fraction: f64,
+    /// `provider/model` ids never to generate.
+    #[serde(default)]
+    pub(super) exclude: Vec<String>,
+}
+
+impl Default for RawDiscovery {
+    fn default() -> Self {
+        Self {
+            file: None,
+            class: default_discovery_class(),
+            max_added_per_run: default_max_added_per_run(),
+            max_removed_fraction: default_max_removed_fraction(),
+            exclude: Vec::new(),
+        }
+    }
+}
+
+fn default_discovery_class() -> String {
+    "public".to_string()
+}
+
+fn default_max_added_per_run() -> u32 {
+    10
+}
+
+fn default_max_removed_fraction() -> f64 {
+    0.5
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// A provider's opt-in to model discovery (ADR 0022).
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoverSpec {
+    /// What new models from this provider are treated as (plus `all`, and `reasoning` when the source says so).
+    #[serde(default)]
+    pub strengths: Vec<String>,
+    /// Require the provider's own `/models` to list a model too (default true). Turn off only for a
+    /// provider with no usable `/models`; the guide says this is weaker.
+    #[serde(default = "default_true")]
+    pub confirm: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -199,6 +262,9 @@ pub(super) struct RawProvider {
     /// Where the gateway reads this provider's usage windows while serving, for example
     /// `opencode-go`. It is polled with the provider's own key, only at the provider's own host.
     pub(super) quota_source: Option<String>,
+    /// Opt in to model discovery (needs `price_source`, which names the models.dev provider).
+    #[serde(default)]
+    pub(super) discover: Option<DiscoverSpec>,
 }
 
 #[derive(Debug, Deserialize)]

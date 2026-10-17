@@ -29,14 +29,14 @@ pub struct LeftOut {
     pub reason: &'static str,
 }
 
-fn valid_label(label: &str) -> bool {
+pub(super) fn valid_label(label: &str) -> bool {
     (1..=MAX_LABEL_LEN).contains(&label.len())
         && label
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
-fn validate_strengths(target: &str, strengths: &[String]) -> Result<(), ConfigError> {
+pub(super) fn validate_strengths(target: &str, strengths: &[String]) -> Result<(), ConfigError> {
     if strengths.len() > MAX_STRENGTHS {
         return Err(invalid(format!(
             "target `{target}`: at most {MAX_STRENGTHS} strengths"

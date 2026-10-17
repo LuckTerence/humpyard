@@ -1,9 +1,9 @@
 # Tasks
 
 ## 1. The loader (serve side, no network)
-- [ ] 1.1 `[discovery]` and provider `discover` in config with validation (needs `price_source`; ranges); tests
-- [ ] 1.2 `src/discovered.rs`: strict parse and merge of the generated file with every rule above; pools resolve over the merged targets; tests for each accept/reject case, including collision with a hand-written (provider, model) pair
-- [ ] 1.3 Reload fingerprint covers both files; only-the-generated-file-changed reloads; a bad file is ignored with a log and a gauge; `explain` marks generated targets; metrics; tests end to end
+- [x] 1.1 `[discovery]` and provider `discover` in config with validation (needs `price_source`; ranges); tests
+- [x] 1.2 `src/discovered.rs`: strict parse and merge of the generated file with every rule above; pools resolve over the merged targets; tests for each accept/reject case, including collision with a hand-written (provider, model) pair
+- [x] 1.3 Reload fingerprint covers both files; only-the-generated-file-changed reloads; a bad file is ignored with a log and a gauge; `explain` marks generated targets; metrics; tests end to end
 
 ## 2. The engine (CLI side, network)
 - [ ] 2.1 `src/discover.rs`: read free chat models from the models.dev record (cost 0, text output, window), confirm against the provider's `/models` (key only to its own host); tests with fixtures and a mock provider that fails if a key reaches the dataset host

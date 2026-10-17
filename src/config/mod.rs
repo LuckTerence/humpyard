@@ -1,6 +1,7 @@
 //! Gateway configuration: providers, targets and routes from one TOML file, with API keys read
 //! from the environment.
 
+mod discovered;
 mod pools;
 mod schema;
 #[cfg(test)]
@@ -11,11 +12,12 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
+pub use discovered::DiscoveryState;
 pub use pools::{LeftOut, PoolReport};
 use schema::RawConfig;
 pub use schema::{
-    ClassifierMode, ClassifyTrigger, Endpoint, FallbackClass, FallbackOn, OverBudget, PickerMode,
-    PoolSpec, Price, PriceTier, Rates, RouteSpec, SelectorSpec, TokenRange, When,
+    ClassifierMode, ClassifyTrigger, DiscoverSpec, Endpoint, FallbackClass, FallbackOn, OverBudget,
+    PickerMode, PoolSpec, Price, PriceTier, Rates, RouteSpec, SelectorSpec, TokenRange, When,
 };
 use validate::invalid;
 pub use validate::{CREDENTIAL_HEADERS, QUOTA_SOURCES, parse_price_source};
@@ -70,6 +72,12 @@ pub struct Config {
     pub target_strengths: BTreeMap<String, Vec<String>>,
     /// How each pool route resolved when this configuration loaded.
     pub pools: BTreeMap<String, PoolReport>,
+    /// The `[discovery]` section.
+    pub discovery: DiscoverySettings,
+    /// What became of the generated targets file at this load (ADR 0022).
+    pub discovery_state: DiscoveryState,
+    /// Names of the targets that came from the generated file (`auto-*`).
+    pub generated_targets: std::collections::BTreeSet<String>,
     pub routes: BTreeMap<String, RouteSpec>,
     /// Virtual keys by id. Empty means the gateway is open and unbudgeted.
     pub keys: BTreeMap<String, KeyConfig>,
@@ -133,6 +141,18 @@ pub struct Provider {
     pub price_source: Option<String>,
     /// Where to read this provider's usage windows while serving (for example `opencode-go`).
     pub quota_source: Option<String>,
+    /// Opted in to model discovery (ADR 0022).
+    pub discover: Option<DiscoverSpec>,
+}
+
+/// The `[discovery]` section: where `humpyard models sync` writes and `serve` reads, and the limits on a run.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DiscoverySettings {
+    pub file: Option<PathBuf>,
+    pub class: String,
+    pub max_added_per_run: u32,
+    pub max_removed_fraction: f64,
+    pub exclude: Vec<String>,
 }
 
 impl std::fmt::Debug for Provider {
@@ -145,8 +165,42 @@ impl std::fmt::Debug for Provider {
             .field("header_names", &self.headers.keys().collect::<Vec<_>>())
             .field("price_source", &self.price_source)
             .field("quota_source", &self.quota_source)
+            .field("discover", &self.discover)
             .finish()
     }
+}
+
+/// Reads a file's text, if it can be read (the generated targets file).
+type FileReader<'a> = &'a dyn Fn(&Path) -> Option<String>;
+
+/// The providers with their keys resolved from the environment.
+fn build_providers(
+    raw: BTreeMap<String, schema::RawProvider>,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Result<BTreeMap<String, Provider>, ConfigError> {
+    let mut providers = BTreeMap::new();
+    for (name, p) in raw {
+        let api_key = env(&p.api_key_env)
+            .filter(|key| !key.is_empty())
+            .ok_or_else(|| ConfigError::MissingKey {
+                provider: name.clone(),
+                var: p.api_key_env.clone(),
+            })?;
+        providers.insert(
+            name,
+            Provider {
+                base_url: p.base_url.trim_end_matches('/').to_string(),
+                api_key,
+                timeout_secs: p.timeout_secs,
+                max_retries: p.max_retries,
+                headers: p.headers,
+                price_source: p.price_source,
+                quota_source: p.quota_source,
+                discover: p.discover,
+            },
+        );
+    }
+    Ok(providers)
 }
 
 impl Config {
@@ -155,13 +209,44 @@ impl Config {
             path: path.display().to_string(),
             source,
         })?;
-        Self::from_toml(&text, |name| std::env::var(name).ok())
+        Self::from_toml_with(&text, |name| std::env::var(name).ok(), &|file| {
+            std::fs::read_to_string(file).ok()
+        })
     }
 
-    /// `env` looks up environment variables so tests do not touch the process environment.
+    /// `env` looks up environment variables so tests do not touch the process environment. The generated
+    /// targets file (if `[discovery] file` names one) is not read; use [`Config::from_toml_with`] for that.
     pub fn from_toml(
         text: &str,
         env: impl Fn(&str) -> Option<String>,
+    ) -> Result<Self, ConfigError> {
+        Self::from_toml_with(text, env, &|_| None)
+    }
+
+    /// Like [`Config::from_toml`], also reading the generated targets file through `read` and merging it
+    /// (ADR 0022). That file can never be the reason a configuration fails to load: if merging it makes
+    /// the configuration invalid, it is dropped and the main configuration loads alone.
+    pub fn from_toml_with(
+        text: &str,
+        env: impl Fn(&str) -> Option<String>,
+        read: FileReader<'_>,
+    ) -> Result<Self, ConfigError> {
+        match Self::assemble(text, &env, Some(read)) {
+            Ok(config) => Ok(config),
+            Err(first) => {
+                let mut alone = Self::assemble(text, &env, None)?;
+                alone.discovery_state = DiscoveryState::Ignored(format!(
+                    "merging it made the configuration invalid: {first}"
+                ));
+                Ok(alone)
+            }
+        }
+    }
+
+    fn assemble(
+        text: &str,
+        env: &dyn Fn(&str) -> Option<String>,
+        read: Option<FileReader<'_>>,
     ) -> Result<Self, ConfigError> {
         validate::reject_plaintext_keys(text)?;
         let mut raw: RawConfig = toml::from_str(text).map_err(|e| {
@@ -175,32 +260,18 @@ impl Config {
                 ConfigError::Parse(message)
             }
         })?;
-        // Strengths are checked and pool routes get their targets before the rest is validated, so a
-        // pool is validated like a hand-written route (ADR 0021).
+        // Generated targets are merged first so pools (by strength) see them (ADR 0022); strengths are
+        // checked and pool routes get their targets before the rest is validated, so a pool is validated
+        // like a hand-written route (ADR 0021).
+        validate::discovery(&raw)?;
+        let (generated_targets, discovery_state) = match read {
+            Some(read) => discovered::load(&mut raw, read),
+            None => (std::collections::BTreeSet::new(), DiscoveryState::Off),
+        };
         let pools = pools::resolve(&mut raw)?;
         validate::validate(&raw)?;
 
-        let mut providers = BTreeMap::new();
-        for (name, p) in raw.providers {
-            let api_key = env(&p.api_key_env)
-                .filter(|key| !key.is_empty())
-                .ok_or_else(|| ConfigError::MissingKey {
-                    provider: name.clone(),
-                    var: p.api_key_env.clone(),
-                })?;
-            providers.insert(
-                name,
-                Provider {
-                    base_url: p.base_url.trim_end_matches('/').to_string(),
-                    api_key,
-                    timeout_secs: p.timeout_secs,
-                    max_retries: p.max_retries,
-                    headers: p.headers,
-                    price_source: p.price_source,
-                    quota_source: p.quota_source,
-                },
-            );
-        }
+        let providers = build_providers(raw.providers, env)?;
         let metrics = validate::metrics(&raw.metrics, raw.listen, &raw.keys)?;
         Ok(Self {
             listen: raw.listen,
@@ -222,6 +293,15 @@ impl Config {
                 .map(|(id, t)| (id.clone(), t.strengths.clone()))
                 .collect(),
             pools,
+            discovery: DiscoverySettings {
+                file: raw.discovery.file,
+                class: raw.discovery.class,
+                max_added_per_run: raw.discovery.max_added_per_run,
+                max_removed_fraction: raw.discovery.max_removed_fraction,
+                exclude: raw.discovery.exclude,
+            },
+            discovery_state,
+            generated_targets,
             targets: raw
                 .targets
                 .into_iter()
