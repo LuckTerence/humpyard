@@ -84,6 +84,7 @@ starting config, with failover across two providers, is in [examples/config.toml
 | set budgets, read the usage and decision log, see stats | [Keys, budgets and the ledger](https://humpyard.dev/budgets/) |
 | call the API and its endpoints | [API and endpoints](https://humpyard.dev/api/) |
 | move from LiteLLM | [Migrating from LiteLLM](https://humpyard.dev/migrating-from-litellm/) |
+| move from ModelRelay | [Moving from ModelRelay](https://humpyard.dev/migrating-from-modelrelay/) |
 | understand the design and why | [Architecture](https://humpyard.dev/architecture/) · [Decision records](https://humpyard.dev/adr/) |
 | see what has shipped and what is next | [Roadmap](https://humpyard.dev/roadmap/) |
 

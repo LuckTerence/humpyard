@@ -1,0 +1,15 @@
+{"models":[
+  {"modelId":"meta/llama-3.3-70b-instruct","label":"Llama 3.3 70B","providerKey":"nvidia","ctx":131072,
+   "tags":["general","agentic"],"builtInTags":["general","agentic"],"userTags":[],"status":"up","hidden":false,"avg":412},
+  {"modelId":"deepseek-ai/deepseek-v3.2","label":"DeepSeek V3.2","providerKey":"nvidia","ctx":128000,
+   "tags":["general","agentic","coding"],"status":"up","hidden":false},
+  {"modelId":"llama-3.3-70b-versatile","providerKey":"groq","ctx":131072,"tags":["general","fast"],"status":"up"},
+  {"modelId":"qwen-3-coder-480b","providerKey":"cerebras","ctx":65536,"tags":["coding"],"status":"pending"},
+  {"modelId":"gpt-oss-120b","providerKey":"cerebras","ctx":65536,"tags":["reasoning","general"],"status":"up"},
+  {"modelId":"qwen-3-235b-a22b-instruct","providerKey":"cerebras","ctx":null,"tags":["general"],"status":"banned"},
+  {"modelId":"free/model:free","providerKey":"openrouter","ctx":32768,"tags":["general"],"status":"up"},
+  {"modelId":"codestral-latest","providerKey":"codestral","ctx":256000,"tags":["coding"],"status":"up"},
+  {"modelId":"claude-sonnet-4.5","providerKey":"kiro","ctx":200000,"tags":["coding","general"],"status":"up"},
+  {"modelId":"qwen3-coder:30b","providerKey":"ollama","ctx":229376,"tags":["coding","fast"],"status":"up"},
+  {"modelId":"gemma-3-4b-it","providerKey":"groq","ctx":8192,"tags":["general","fast","quirky"],"status":"up","hidden":true}
+],"best":"llama-3.3-70b-versatile","pinnedModelId":null}
