@@ -94,7 +94,7 @@ fn scraped(state: &AppState, snap: &Snapshot) -> Vec<Family> {
 /// The generated targets file (ADR 0022): how many targets it merged and what became of it. Present only
 /// when a file is configured.
 fn discovery(snap: &Snapshot) -> Vec<Family> {
-    const STATES: [&str; 4] = ["missing", "empty", "loaded", "ignored"];
+    const STATES: [&str; 5] = ["disabled", "missing", "empty", "loaded", "ignored"];
     if snap.config.discovery.file.is_none() {
         return Vec::new();
     }

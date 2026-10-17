@@ -148,6 +148,8 @@ pub struct Provider {
 /// The `[discovery]` section: where `humpyard models sync` writes and `serve` reads, and the limits on a run.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DiscoverySettings {
+    /// The master switch (default false).
+    pub enabled: bool,
     pub file: Option<PathBuf>,
     pub class: String,
     pub max_added_per_run: u32,
@@ -294,6 +296,7 @@ impl Config {
                 .collect(),
             pools,
             discovery: DiscoverySettings {
+                enabled: raw.discovery.enabled,
                 file: raw.discovery.file,
                 class: raw.discovery.class,
                 max_added_per_run: raw.discovery.max_added_per_run,

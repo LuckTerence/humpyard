@@ -81,6 +81,15 @@ answer of 404 or 401, or a 400 naming a missing model, moves the request to the 
 against the dead endpoint, so after a few such answers it is skipped and probed again later. Other routes you
 write keep their old behavior unless they list `unavailable` in `fallback_on`.
 
+## Keeping the pools current: you schedule it
+
+ModelRelay refreshed its model lists by itself every 30 minutes; humpyard does not run anything on its own.
+To get the same effect, switch on [discovery](discovery.md) for the free providers and **run `humpyard models
+sync` on a schedule** (cron, a systemd timer, launchd, Task Scheduler, a loop in a second container, or a
+Kubernetes sidecar; each recipe is in that guide). Without it, a migrated pool is a snapshot: new free models
+never join and removed ones linger until health skipping routes around them. A paid plan's new models are
+reported by `humpyard models check --paid`, never added automatically.
+
 ## Moving over
 
 1. Run the command and review the fragment; merge it into your configuration (or an included file).

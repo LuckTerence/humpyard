@@ -466,7 +466,10 @@ fn log_discovery(old: Option<&Config>, new: &Config) {
         DiscoveryState::Ignored(reason) => {
             tracing::warn!(%reason, "generated targets file ignored; serving with the main configuration");
         }
-        DiscoveryState::Off | DiscoveryState::Missing | DiscoveryState::Empty => {}
+        DiscoveryState::Off
+        | DiscoveryState::Disabled
+        | DiscoveryState::Missing
+        | DiscoveryState::Empty => {}
     }
 }
 

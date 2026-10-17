@@ -2,6 +2,17 @@
 
 ## ADDED Requirements
 
+### Requirement: Two switches
+Discovery SHALL be off unless `[discovery] enabled` is true (which requires `file`) and the provider has `discover` with `enabled` true (the default). With the master switch off the generated file SHALL NOT be read and `models sync` SHALL refuse to write; a provider with `enabled = false` SHALL have its generated targets skipped by the loader at once and removed by the next sync.
+
+#### Scenario: Master switch off
+- **WHEN** `[discovery] file` is set and `enabled` is false or absent
+- **THEN** the file is not merged, the state is reported as disabled, and `models sync` exits 2 naming the switch
+
+#### Scenario: One provider opts out
+- **WHEN** two providers have generated targets and one sets `discover.enabled = false`
+- **THEN** the other provider's targets still load and the opted-out provider's are skipped
+
 ### Requirement: Discovery opt-in and settings
 A provider MAY set `discover = { strengths = [...], confirm = true }` (requires `price_source`), and the configuration MAY have `[discovery]` with `file`, `class` (default `public`), `max_added_per_run` (default 10), `max_removed_fraction` (default 0.5) and `exclude` (a list of `provider/model` ids).
 

@@ -333,6 +333,11 @@ pub(super) fn discovery(raw: &RawConfig) -> Result<(), ConfigError> {
         super::pools::validate_strengths(&format!("providers.{name}.discover"), &spec.strengths)?;
     }
     let settings = &raw.discovery;
+    if settings.enabled && settings.file.is_none() {
+        return Err(invalid(
+            "discovery.enabled needs `file`: the generated targets file `serve` reads and `models sync` writes",
+        ));
+    }
     if settings.class.trim().is_empty() || settings.class.len() > 32 {
         return Err(invalid("discovery.class must be 1 to 32 characters"));
     }
