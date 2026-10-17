@@ -17,8 +17,9 @@ discovery is the missing part, not an extra.
   Exit codes like `prices check` (0 clean, 1 something to review, 2 unusable), so a scheduled job can alert.
 - **`humpyard models sync`** writes a generated file, `discovered.toml`, containing only `[targets.auto-*]`:
   one target per free chat model that **both** models.dev (free, chat, context window) and the provider's own
-  `/models` (available to your key) confirm. It is rewritten atomically, only when it changes, and refused
-  when a guardrail trips. `--every 6h` makes it a loop for a sidecar or a second container.
+  `/models` (available to your key) confirm. A target already in the file is **kept while the provider still
+  lists it and the dataset does not say it has become paid**; a dataset that merely lags or omits a model
+  never removes one. It is rewritten atomically, only when it changes, and refused when a guardrail trips. `--every 6h` makes it a loop for a sidecar or a second container.
 - **`serve` reads the file, never fetches.** `[discovery] file = "..."` names the generated file. At load and
   on every reload it is parsed strictly and merged into the targets, so pools (by strength) and `auto-fastest`
   pick the new targets up with the existing hot reload. A missing, empty or invalid file is ignored and logged:

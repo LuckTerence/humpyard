@@ -8,7 +8,7 @@
 ## 2. The engine (CLI side, network)
 - [ ] 2.1 `src/discover.rs`: read free chat models from the models.dev record (cost 0, text output, window), confirm against the provider's `/models` (key only to its own host); tests with fixtures and a mock provider that fails if a key reaches the dataset host
 - [ ] 2.2 `models check` with `--json` and exit codes; new, gone, unconfirmed, window drift; tests
-- [ ] 2.3 `models sync`: generated file, atomic write, unchanged-is-untouched, `.prev`, guardrails (`max_added_per_run`, `max_removed_fraction`, empty source, floor), `--every` loop that survives a failed run; tests including an outage and a poisoned dataset
+- [ ] 2.3 `models sync`: generated file, atomic write, unchanged-is-untouched, `.prev`, the keep/remove rule (add on both sources, keep on the provider, remove on the provider or on "now paid"; a dataset that omits a model for a run changes nothing), guardrails (`max_added_per_run`, `max_removed_fraction`, empty provider list, floor), `--every` loop that survives a failed run; tests including an outage and a poisoned dataset
 - [ ] 2.4 Architecture rules: the network module is used only by `main`, the pure loader by `config` and `server`; the serving-path test covers `discover`
 
 ## 3. Docs and decisions

@@ -20,6 +20,20 @@ The CLI SHALL provide `humpyard models sync --config FILE [--every DURATION]` th
 - **WHEN** a run finds nothing changed
 - **THEN** the file is not rewritten
 
+#### Scenario: Adding needs both sources, keeping needs the provider
+- **WHEN** a model is new and only one source lists it as free
+- **THEN** it is not added
+- **WHEN** a model already in the generated file is still listed by the provider but models.dev has dropped or lost it
+- **THEN** it is kept
+
+#### Scenario: Removal
+- **WHEN** the provider no longer lists a generated model, or models.dev now records a nonzero cost for it
+- **THEN** it is removed at the next run
+
+#### Scenario: A flapping dataset
+- **WHEN** models.dev omits a generated model for one run and lists it again the next, and the provider lists it throughout
+- **THEN** the file is unchanged for both runs and the gateway does not reload
+
 #### Scenario: A source outage
 - **WHEN** a source returns an empty list for a provider that has generated targets
 - **THEN** nothing is written, the guardrail is reported, and the existing file keeps serving

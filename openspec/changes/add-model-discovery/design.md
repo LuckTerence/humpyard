@@ -15,6 +15,16 @@ Providers' own `GET /models` is the ground truth for what a key can use, but car
   operator's key. Either source alone can be wrong or poisoned; the intersection bounds the damage to models
   the provider really offers to this key and the dataset says cost nothing. `discover` may set `confirm =
   false` for a provider with no usable `/models`; that is stated as weaker in the guide.
+- **Add on agreement, keep on the provider, remove on the provider or on "now paid".** A model is added only
+  when both sources agree. Once it is in the generated file it stays while the provider's `/models` still lists
+  it and models.dev has not recorded a nonzero cost for it. It is removed when the provider stops listing it
+  (the provider is the authority on availability) or when the dataset says it is no longer free (a model that
+  turns paid must leave a free pool at once). models.dev being thinner, slower or briefly missing a model never
+  removes anything, because that is the likely source of flapping. This needs no state of its own: the rule
+  reads the previous generated file, which the removal guard already reads, and deleting the file resets it
+  (everything is then re-added only on agreement). A model that disappears and returns is two cheap reloads
+  and a fresh breaker for that one target; unchanged targets keep their health state across a reload, and speed
+  figures live in memory by target name.
 - **A generated file, not an edit of the config.** `models sync` owns one file and rebuilds it from scratch
   each run, so removals are automatic and nothing hand-written is ever rewritten. `serve` merges it as extra
   `[targets.auto-*]`; pools resolve over the merged set, so `strengths` and the `all` catch-all work unchanged.
@@ -33,8 +43,9 @@ Providers' own `GET /models` is the ground truth for what a key can use, but car
   (it is regenerated); to label one, write a hand target for the same (provider, model) and it is no longer
   generated.
 - **Guardrails are numbers with defaults.** `max_added_per_run = 10`, `max_removed_fraction = 0.5` (refuse a run
-  that would drop more than half of a non-trivial generated set, which catches an empty or truncated source),
-  and a floor: at least one source model per opted-in provider or the provider is skipped and reported.
+  that would drop more than half of a non-trivial generated set, which catches a provider list that comes back
+  empty or truncated), and a floor: a provider whose `/models` returns nothing is skipped and reported, and its
+  existing generated targets are left as they are.
 - **Where it runs is not the gateway's concern, and the simplest place is the same machine.** The one-shot
   `models sync` is the primary form: any scheduler (cron, a systemd timer, launchd, Task Scheduler) that can
   run a command on the host where the gateway runs, writing the file the gateway reads; the gateway's existing
