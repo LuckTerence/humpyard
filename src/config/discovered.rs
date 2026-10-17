@@ -212,6 +212,7 @@ fn parse(text: &str, raw: &RawConfig) -> Result<Vec<(String, RawTarget)>, String
                 endpoints: target.endpoints,
                 class: Some(raw.discovery.class.clone()),
                 strengths: target.strengths,
+                quality: None,
             },
         ));
     }

@@ -1511,17 +1511,19 @@ fn plan_route(
         }
     }
     // First pass leaves cold targets out; if that leaves nothing, plan again with them (fail open).
+    let quality = |target: &str| snap.config.target_quality.get(target).copied();
     let warm_plan = route.plan_ranked(
         model,
         |target| eligible(target) && !cold.iter().any(|c| c == target),
         latency,
+        &quality,
     );
     let (plan, cold_skipped, fail_open) = if let Some(plan) = warm_plan {
         (Some(plan), cold, false)
     } else {
         let open = !cold.is_empty();
         (
-            route.plan_ranked(model, eligible, latency),
+            route.plan_ranked(model, eligible, latency, &quality),
             Vec::new(),
             open,
         )

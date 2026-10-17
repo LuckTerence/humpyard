@@ -559,9 +559,22 @@ pub(super) fn validate_route(id: &str, route: &RouteSpec) -> Result<(), ConfigEr
             explore,
             min_samples,
             max_age_secs,
+            quality_weight,
+            latency_target_ms,
+            unknown_quality,
             ..
         } => {
             non_empty("targets", targets)?;
+            if !(0.0..=1.0).contains(quality_weight) || !(0.0..=1.0).contains(unknown_quality) {
+                return Err(invalid(format!(
+                    "route `{id}`: `quality_weight` and `unknown_quality` must be between 0 and 1"
+                )));
+            }
+            if *latency_target_ms == 0 {
+                return Err(invalid(format!(
+                    "route `{id}`: `latency_target_ms` must be at least 1"
+                )));
+            }
             if !(0.0..=1.0).contains(explore) {
                 return Err(invalid(format!(
                     "route `{id}`: `explore` must be between 0 and 1"

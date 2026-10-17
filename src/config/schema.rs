@@ -287,6 +287,11 @@ pub(super) struct RawTarget {
     /// pool routes include the target; they never remove it from a request (ADR 0021).
     #[serde(default)]
     pub(super) strengths: Vec<String>,
+    /// How good the model is, from 0 to 1, as the operator states it (a benchmark score they trust). Never
+    /// fetched at runtime; may be absent (unknown). Used by a pool's `min_quality` and by a `fastest`
+    /// route's `quality_weight` (ADR 0020).
+    #[serde(default)]
+    pub(super) quality: Option<f64>,
 }
 
 fn default_quota_poll_secs() -> u64 {
@@ -315,6 +320,14 @@ fn default_max_retries() -> u32 {
 
 fn default_explore() -> f64 {
     0.1
+}
+
+fn default_latency_target_ms() -> u64 {
+    2000
+}
+
+fn default_unknown_quality() -> f64 {
+    0.5
 }
 
 fn default_min_samples() -> u32 {
@@ -608,12 +621,15 @@ impl FallbackOn {
 
 /// A pool: every target that carries `strength` (and, when set, declares a context window of at least
 /// `min_context_window`), resolved when the configuration loads (ADR 0021).
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PoolSpec {
     pub strength: String,
     #[serde(default)]
     pub min_context_window: Option<u64>,
+    /// Keep only targets that declare at least this quality (0 to 1). An undeclared quality does not qualify.
+    #[serde(default)]
+    pub min_quality: Option<f64>,
 }
 
 /// A built-in Switchyard algorithm over named targets.
@@ -651,6 +667,16 @@ pub enum RouteSpec {
         /// A figure older than this counts as unmeasured.
         #[serde(default = "default_max_age_secs")]
         max_age_secs: u64,
+        /// How much a target's declared quality counts against its speed when ordering (0 to 1; 0 keeps
+        /// the pure speed order).
+        #[serde(default)]
+        quality_weight: f64,
+        /// The answer time that earns full speed marks, in milliseconds.
+        #[serde(default = "default_latency_target_ms")]
+        latency_target_ms: u64,
+        /// The quality assumed for a target that declares none.
+        #[serde(default = "default_unknown_quality")]
+        unknown_quality: f64,
         /// Makes the exploration draws reproducible.
         seed: Option<u64>,
         /// Failures that move on to the next target; all of them when absent.

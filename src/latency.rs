@@ -83,22 +83,63 @@ impl Latency {
     /// Orders `targets` (the eligible ones, in the route's written order) for one request: unmeasured
     /// targets first in written order, then measured ones fastest first; with probability
     /// `settings.explore` a random target goes first instead. `draw` yields uniform values in `[0, 1)`.
+    ///
+    /// With `settings.quality_weight` above 0, measured targets are ordered by
+    /// `(1 - w) * speed + w * quality` instead (`quality` from `quality`, or `settings.unknown_quality`),
+    /// ties by observed speed; with 0 the order is exactly the speed order.
     pub fn rank(
         &self,
         targets: &[String],
         settings: &Settings,
+        quality: &dyn Fn(&str) -> Option<f64>,
         mut draw: impl FnMut() -> f64,
     ) -> Ranked {
         let mut unmeasured = Vec::new();
         let mut measured: Vec<(&String, f64)> = Vec::new();
+        let mut scores = Vec::with_capacity(targets.len());
         for target in targets {
-            match self.measured(target, settings) {
-                Some(figure) => measured.push((target, figure.ms)),
-                None => unmeasured.push(target.clone()),
+            let declared = quality(target);
+            if let Some(figure) = self.measured(target, settings) {
+                measured.push((target, figure.ms));
+                let speed = (settings.latency_target_ms / figure.ms.max(1.0)).min(1.0);
+                let blended = (1.0 - settings.quality_weight) * speed
+                    + settings.quality_weight * declared.unwrap_or(settings.unknown_quality);
+                scores.push(Score {
+                    target: target.clone(),
+                    observed_ms: Some(figure.ms),
+                    speed: Some(speed),
+                    quality: declared,
+                    score: (settings.quality_weight > 0.0).then_some(blended),
+                });
+            } else {
+                unmeasured.push(target.clone());
+                scores.push(Score {
+                    target: target.clone(),
+                    observed_ms: None,
+                    speed: None,
+                    quality: declared,
+                    score: None,
+                });
             }
         }
-        // A stable sort keeps the written order between equal figures.
-        measured.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let score_of = |target: &str| {
+            scores
+                .iter()
+                .find(|s| s.target == target)
+                .and_then(|s| s.score)
+                .unwrap_or(0.0)
+        };
+        // A stable sort keeps the written order between equal figures. With no quality weight this is the
+        // plain speed order; with one, the blended score decides and speed breaks ties.
+        measured.sort_by(|a, b| {
+            if settings.quality_weight > 0.0 {
+                score_of(b.0)
+                    .total_cmp(&score_of(a.0))
+                    .then(a.1.total_cmp(&b.1))
+            } else {
+                a.1.total_cmp(&b.1)
+            }
+        });
         let mut order = unmeasured;
         order.extend(measured.into_iter().map(|(target, _)| target.clone()));
         let mut reason = Reason::Fastest;
@@ -108,7 +149,11 @@ impl Latency {
             order.insert(0, chosen);
             reason = Reason::Explore;
         }
-        Ranked { order, reason }
+        Ranked {
+            order,
+            reason,
+            scores,
+        }
     }
 }
 
@@ -121,13 +166,35 @@ pub struct Settings {
     pub min_samples: u32,
     /// A figure older than this counts as unmeasured.
     pub max_age_ms: i64,
+    /// How much declared quality counts against speed (0 to 1; 0 is the pure speed order).
+    pub quality_weight: f64,
+    /// The answer time (milliseconds) that earns full speed marks.
+    pub latency_target_ms: f64,
+    /// The quality assumed for a target that declares none.
+    pub unknown_quality: f64,
 }
 
 /// The order one request will use, and why its first target is first.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Ranked {
     pub order: Vec<String>,
     pub reason: Reason,
+    /// How each target scored (for `explain`), in the order the targets were given.
+    pub scores: Vec<Score>,
+}
+
+/// One target's figures behind an order.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Score {
+    pub target: String,
+    /// The smoothed time to answer, when the target is measured.
+    pub observed_ms: Option<f64>,
+    /// `min(1, latency_target_ms / observed_ms)`, when measured.
+    pub speed: Option<f64>,
+    /// The declared quality, if any.
+    pub quality: Option<f64>,
+    /// `(1 - w) * speed + w * quality`, when measured and the route has a quality weight.
+    pub score: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -203,6 +270,21 @@ mod tests {
             explore: 0.0,
             min_samples: 3,
             max_age_ms: 600_000,
+            quality_weight: 0.0,
+            latency_target_ms: 2000.0,
+            unknown_quality: 0.5,
+        }
+    }
+
+    fn no_quality(_: &str) -> Option<f64> {
+        None
+    }
+
+    fn blend(weight: f64) -> Settings {
+        Settings {
+            quality_weight: weight,
+            latency_target_ms: 2000.0,
+            ..settings()
         }
     }
 
@@ -234,7 +316,12 @@ mod tests {
         feed(&latency, "slow", 900, 3);
         feed(&latency, "mid", 400, 3);
         feed(&latency, "quick", 100, 3);
-        let ranked = latency.rank(&names(&["slow", "mid", "quick"]), &settings(), || 0.99);
+        let ranked = latency.rank(
+            &names(&["slow", "mid", "quick"]),
+            &settings(),
+            &no_quality,
+            || 0.99,
+        );
         assert_eq!(ranked.order, names(&["quick", "mid", "slow"]));
         assert_eq!(ranked.reason, Reason::Fastest);
     }
@@ -247,6 +334,7 @@ mod tests {
         let ranked = latency.rank(
             &names(&["known", "new", "thin", "newer"]),
             &settings(),
+            &no_quality,
             || 0.99,
         );
         assert_eq!(ranked.order, names(&["new", "thin", "newer", "known"]));
@@ -259,7 +347,7 @@ mod tests {
         feed(&latency, "b", 900, 3);
         clock.0.fetch_add(600_001, Ordering::SeqCst);
         feed(&latency, "b", 900, 1); // b is fresh again, a is not
-        let ranked = latency.rank(&names(&["b", "a"]), &settings(), || 0.99);
+        let ranked = latency.rank(&names(&["b", "a"]), &settings(), &no_quality, || 0.99);
         assert_eq!(
             ranked.order,
             names(&["a", "b"]),
@@ -272,7 +360,7 @@ mod tests {
         let (latency, _) = tracker();
         feed(&latency, "x", 300, 3);
         feed(&latency, "y", 300, 3);
-        let ranked = latency.rank(&names(&["y", "x"]), &settings(), || 0.99);
+        let ranked = latency.rank(&names(&["y", "x"]), &settings(), &no_quality, || 0.99);
         assert_eq!(ranked.order, names(&["y", "x"]));
     }
 
@@ -288,12 +376,16 @@ mod tests {
         };
         // First draw 0.1 < 0.5 selects exploration; second draw 0.9 picks index 2 of [a, b, c].
         let mut draws = [0.1, 0.9].into_iter();
-        let ranked = latency.rank(&names(&["a", "b", "c"]), &explore, || draws.next().unwrap());
+        let ranked = latency.rank(&names(&["a", "b", "c"]), &explore, &no_quality, || {
+            draws.next().unwrap()
+        });
         assert_eq!(ranked.order, names(&["c", "a", "b"]));
         assert_eq!(ranked.reason, Reason::Explore);
         // A draw at or above the probability does not explore.
         let mut draws = [0.5].into_iter();
-        let ranked = latency.rank(&names(&["a", "b", "c"]), &explore, || draws.next().unwrap());
+        let ranked = latency.rank(&names(&["a", "b", "c"]), &explore, &no_quality, || {
+            draws.next().unwrap()
+        });
         assert_eq!(ranked.order, names(&["a", "b", "c"]));
         assert_eq!(ranked.reason, Reason::Fastest);
     }
@@ -306,9 +398,11 @@ mod tests {
             explore: 1.0,
             ..settings()
         };
-        let ranked = latency.rank(&names(&["a"]), &always, || panic!("no draw for one target"));
+        let ranked = latency.rank(&names(&["a"]), &always, &no_quality, || {
+            panic!("no draw for one target")
+        });
         assert_eq!(ranked.order, names(&["a"]));
-        let ranked = latency.rank(&names(&["a", "b"]), &settings(), || {
+        let ranked = latency.rank(&names(&["a", "b"]), &settings(), &no_quality, || {
             panic!("explore = 0 never draws")
         });
         assert_eq!(ranked.order.len(), 2);
@@ -324,5 +418,100 @@ mod tests {
             assert!((0.0..1.0).contains(&x), "{x}");
         }
         assert!((Draws::new(Some(8)).next() - Draws::new(Some(7)).next()).abs() > f64::EPSILON);
+    }
+
+    #[test]
+    fn weight_zero_is_the_speed_order_whatever_the_qualities() {
+        let (latency, _) = tracker();
+        feed(&latency, "quick-weak", 300, 3);
+        feed(&latency, "slow-strong", 900, 3);
+        let quality = |t: &str| (t == "slow-strong").then_some(0.99);
+        let ranked = latency.rank(
+            &names(&["slow-strong", "quick-weak"]),
+            &blend(0.0),
+            &quality,
+            || 0.99,
+        );
+        assert_eq!(ranked.order, names(&["quick-weak", "slow-strong"]));
+        assert!(
+            ranked.scores.iter().all(|s| s.score.is_none()),
+            "no score without a weight"
+        );
+    }
+
+    #[test]
+    fn quality_outweighs_a_small_speed_gap() {
+        // Target 2000 ms: both are under it, so speed is 1.0 for each; quality decides.
+        let (latency, _) = tracker();
+        feed(&latency, "fast-weak", 300, 3);
+        feed(&latency, "mid-strong", 600, 3);
+        let quality = |t: &str| Some(if t == "mid-strong" { 0.8 } else { 0.4 });
+        let ranked = latency.rank(
+            &names(&["fast-weak", "mid-strong"]),
+            &blend(0.7),
+            &quality,
+            || 0.99,
+        );
+        assert_eq!(ranked.order, names(&["mid-strong", "fast-weak"]));
+        let strong = ranked
+            .scores
+            .iter()
+            .find(|s| s.target == "mid-strong")
+            .unwrap();
+        assert!((strong.score.unwrap() - (0.3 * 1.0 + 0.7 * 0.8)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_very_slow_strong_model_does_not_lead() {
+        let (latency, _) = tracker();
+        feed(&latency, "glacial-great", 20_000, 3);
+        feed(&latency, "brisk-ok", 800, 3);
+        let quality = |t: &str| Some(if t == "glacial-great" { 0.9 } else { 0.6 });
+        let ranked = latency.rank(
+            &names(&["glacial-great", "brisk-ok"]),
+            &blend(0.5),
+            &quality,
+            || 0.99,
+        );
+        // speed 0.1 for the slow one: 0.5*0.1 + 0.5*0.9 = 0.50; speed 1.0 for the other: 0.5 + 0.3 = 0.80.
+        assert_eq!(ranked.order, names(&["brisk-ok", "glacial-great"]));
+    }
+
+    #[test]
+    fn an_undeclared_quality_counts_as_the_neutral_value_and_ties_break_by_speed() {
+        let (latency, _) = tracker();
+        feed(&latency, "unknown", 300, 3);
+        feed(&latency, "declared", 100, 3);
+        // Both reach full speed marks; `declared` has 0.5 as well, so they tie and the faster one leads.
+        let quality = |t: &str| (t == "declared").then_some(0.5);
+        let ranked = latency.rank(
+            &names(&["unknown", "declared"]),
+            &blend(0.5),
+            &quality,
+            || 0.99,
+        );
+        assert_eq!(ranked.order, names(&["declared", "unknown"]));
+        // Below the neutral value an unknown target outranks a declared weak one.
+        let weak = |t: &str| (t == "declared").then_some(0.1);
+        let ranked = latency.rank(&names(&["declared", "unknown"]), &blend(0.5), &weak, || {
+            0.99
+        });
+        assert_eq!(ranked.order, names(&["unknown", "declared"]));
+    }
+
+    #[test]
+    fn unmeasured_targets_still_go_first_with_a_quality_weight() {
+        let (latency, _) = tracker();
+        feed(&latency, "known-strong", 100, 3);
+        let quality = |_: &str| Some(0.9);
+        let ranked = latency.rank(
+            &names(&["known-strong", "fresh"]),
+            &blend(0.9),
+            &quality,
+            || 0.99,
+        );
+        assert_eq!(ranked.order, names(&["fresh", "known-strong"]));
+        let fresh = ranked.scores.iter().find(|s| s.target == "fresh").unwrap();
+        assert_eq!(fresh.score, None, "an unmeasured target has no score yet");
     }
 }

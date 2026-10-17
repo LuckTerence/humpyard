@@ -24,6 +24,9 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   reads its prices; serving never uses it. See [Keeping prices current](budgets.md#keeping-prices-current).
 - `price = { input, output, cached_input, tiers }` on an endpoint (USD per million tokens;
   `tiers` raise the rates above a prompt size): see [Prices and cost](budgets.md#prices-and-cost).
+- `quality = 0.74` on a target (optional): how good the model is, 0 to 1, as you state it (a benchmark score
+  you trust; never fetched). A pool's `min_quality` keeps only targets that declare enough, and a `fastest`
+  route's `quality_weight` blends it with speed; see [Fastest routes](routing.md#fastest-routes).
 - `strengths = ["general", "fast"]` on a target (optional): soft labels (what the model is good at) that
   decide which [pool routes](routing.md#pools-and-strengths) include it; they never remove it from a request.
 - `class = "private"` on a target (optional): a label (`private`, `public`, `paid`, or your own) that

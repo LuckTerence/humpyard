@@ -70,6 +70,8 @@ pub struct Config {
     /// Soft labels per target (only targets that declare some); they decide pool membership and
     /// nothing else (ADR 0021).
     pub target_strengths: BTreeMap<String, Vec<String>>,
+    /// The quality (0 to 1) each target declares; targets that declare none are absent.
+    pub target_quality: BTreeMap<String, f64>,
     /// How each pool route resolved when this configuration loaded.
     pub pools: BTreeMap<String, PoolReport>,
     /// The `[discovery]` section.
@@ -293,6 +295,11 @@ impl Config {
                 .iter()
                 .filter(|(_, t)| !t.strengths.is_empty())
                 .map(|(id, t)| (id.clone(), t.strengths.clone()))
+                .collect(),
+            target_quality: raw
+                .targets
+                .iter()
+                .filter_map(|(id, t)| Some((id.clone(), t.quality?)))
                 .collect(),
             pools,
             discovery: DiscoverySettings {
