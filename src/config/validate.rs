@@ -317,6 +317,52 @@ pub(super) fn validate_selectors(raw: &RawConfig) -> Result<(), ConfigError> {
 /// One day: far beyond any useful cooldown, small enough that doubling can never overflow.
 const MAX_COOLDOWN_SECS: u64 = 86_400;
 
+/// Settings for model discovery (ADR 0022): the provider opt-ins and the `[discovery]` section. Runs before
+/// the generated targets are merged, so a hand-written target named like a generated one is caught here
+/// instead of silently disabling the generated file.
+pub(super) fn discovery(raw: &RawConfig) -> Result<(), ConfigError> {
+    for (name, provider) in &raw.providers {
+        let Some(spec) = &provider.discover else {
+            continue;
+        };
+        if provider.price_source.is_none() {
+            return Err(invalid(format!(
+                "providers.{name}.discover needs `price_source` (it names the models.dev provider discovery reads)"
+            )));
+        }
+        super::pools::validate_strengths(&format!("providers.{name}.discover"), &spec.strengths)?;
+    }
+    let settings = &raw.discovery;
+    if settings.class.trim().is_empty() || settings.class.len() > 32 {
+        return Err(invalid("discovery.class must be 1 to 32 characters"));
+    }
+    if settings.max_added_per_run == 0 {
+        return Err(invalid("discovery.max_added_per_run must be at least 1"));
+    }
+    if !(0.0..=1.0).contains(&settings.max_removed_fraction) {
+        return Err(invalid(
+            "discovery.max_removed_fraction must be between 0 and 1",
+        ));
+    }
+    for id in &settings.exclude {
+        let provider = id.split_once('/').map(|(provider, _)| provider);
+        if !provider.is_some_and(|p| raw.providers.contains_key(p)) {
+            return Err(invalid(format!(
+                "discovery.exclude: `{id}` must be `<provider>/<model>` with a configured provider"
+            )));
+        }
+    }
+    if settings.file.is_some() {
+        let prefix = super::discovered::PREFIX;
+        if let Some(name) = raw.targets.keys().find(|n| n.starts_with(prefix)) {
+            return Err(invalid(format!(
+                "target `{name}`: names starting with `{prefix}` are reserved for generated targets when [discovery] file is set"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn validate_health(raw: &RawConfig) -> Result<(), ConfigError> {
     let health = &raw.health;
     if health.failure_threshold == 0 {

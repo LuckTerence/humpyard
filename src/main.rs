@@ -376,8 +376,23 @@ async fn main() -> ExitCode {
 async fn run(command: Command) -> Result<(), String> {
     match command {
         Command::CheckConfig { path } => {
-            Config::load(&path).map_err(|e| e.to_string())?;
+            let config = Config::load(&path).map_err(|e| e.to_string())?;
             println!("config ok");
+            match &config.discovery_state {
+                humpyard::config::DiscoveryState::Loaded(n) => {
+                    println!("generated targets: {n} loaded");
+                }
+                humpyard::config::DiscoveryState::Ignored(reason) => {
+                    println!("generated targets: file ignored ({reason})");
+                }
+                humpyard::config::DiscoveryState::Missing => {
+                    println!("generated targets: file not there yet (no sync has run)");
+                }
+                humpyard::config::DiscoveryState::Empty => {
+                    println!("generated targets: file is empty");
+                }
+                humpyard::config::DiscoveryState::Off => {}
+            }
             Ok(())
         }
         Command::Keygen { id } => {

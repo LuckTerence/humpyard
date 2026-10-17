@@ -54,6 +54,8 @@ cannot call inference or any other endpoint.
 | `humpyard_retry_after_honored_total` | counter | `provider`, `source` (`body` today) |
 | `humpyard_capability_skips_total` | counter | `route`, `target`, `reason` |
 | `humpyard_target_latency_seconds` | gauge | `target` |
+| `humpyard_discovery_targets` | gauge | (none; only when `[discovery] file` is set) |
+| `humpyard_discovery_file_state` | gauge | `state` (`missing`, `empty`, `loaded`, `ignored`; 1 for the current state) |
 | `humpyard_endpoint_state` | gauge | `target`, `provider`, `model`, `state` (1 for the current state) |
 | `humpyard_ledger_queue_depth` | gauge | none |
 | `humpyard_ledger_dropped_total`, `humpyard_ledger_failed_total` | counter | none |

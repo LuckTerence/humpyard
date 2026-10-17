@@ -60,6 +60,19 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   cooling down out of a request's plan when another target remains, never refusing a request for it);
   `GET /v1/health` shows which endpoints are being skipped. See [Endpoint health](routing.md#endpoint-health).
 
+- `[discovery]` and `discover` on a provider (optional): the settings for **model discovery** (ADR 0022),
+  which keeps free pools current from a generated file. A provider opts in with
+  `discover = { strengths = ["general"] }` (it also needs `price_source`, which names the models.dev
+  provider); `[discovery]` has `file` (the generated file, an absolute path; `humpyard models sync` writes it
+  and `serve` reads it), `class` (default `public`, applied to every generated target), `max_added_per_run`
+  (default 10), `max_removed_fraction` (default 0.5) and `exclude` (`provider/model` ids never to generate).
+  `serve` only **reads** that file, at load and on every reload (the reload poll watches it too), and never
+  fetches anything. It is accepted or ignored as a whole: it may contain nothing but `[targets.auto-*]` on
+  opted-in providers, every endpoint priced at zero, no model a hand-written target already uses, and never a
+  class other than the configured one; otherwise it is ignored with a log line, `humpyard check-config`
+  says so, and the gateway serves with the main configuration. Target names starting with `auto-` are
+  reserved when `file` is set. `humpyard_discovery_file_state` and `humpyard_discovery_targets` show its state.
+
 Logging is controlled by `RUST_LOG` (default `info`).
 
 **Reloading.** Edit the config file and send SIGHUP (or set `reload_poll_secs` so the gateway

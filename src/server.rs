@@ -170,7 +170,11 @@ pub async fn run(
     let initial_fingerprint = reload
         .as_ref()
         .and_then(|r| std::fs::read_to_string(&r.path).ok())
-        .map_or_else(|| "startup".to_string(), |text| fingerprint(&text));
+        .map_or_else(
+            || "startup".to_string(),
+            |text| watched_fingerprint(&text, config.discovery.file.as_deref()),
+        );
+    log_discovery(None, &config);
     let built = build(config, Options::default(), initial_fingerprint).await?;
     let poll = (poll_secs > 0).then(|| Duration::from_secs(poll_secs));
     let reloader = reload.map(|r| tokio::spawn(reload_loop(built.state.clone(), r, poll)));
@@ -280,7 +284,8 @@ async fn reload_loop(state: Arc<AppState>, mut reload: Reload, poll: Option<Dura
             let Ok(text) = std::fs::read_to_string(&reload.path) else {
                 continue;
             };
-            let seen = fingerprint(&text);
+            let generated = state.snapshot().config.discovery.file.clone();
+            let seen = watched_fingerprint(&text, generated.as_deref());
             if seen == last_seen {
                 continue;
             }
@@ -289,7 +294,8 @@ async fn reload_loop(state: Arc<AppState>, mut reload: Reload, poll: Option<Dura
         loop {
             reload_config(&state, &reload.path).await;
             if let Ok(text) = std::fs::read_to_string(&reload.path) {
-                last_seen = fingerprint(&text);
+                let generated = state.snapshot().config.discovery.file.clone();
+                last_seen = watched_fingerprint(&text, generated.as_deref());
             }
             if reload.triggers.try_recv().is_err() {
                 break;
@@ -325,12 +331,15 @@ async fn reload_config(state: &AppState, path: &std::path::Path) {
 fn try_reload(state: &AppState, path: &std::path::Path) -> Result<String, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
-    let config =
-        Config::from_toml(&text, |name| std::env::var(name).ok()).map_err(|e| e.to_string())?;
+    let config = Config::from_toml_with(&text, |name| std::env::var(name).ok(), &|file| {
+        std::fs::read_to_string(file).ok()
+    })
+    .map_err(|e| e.to_string())?;
     let current = state.snapshot();
     restart_only_changes(&current.config, &config)?;
     log_pool_changes(&current.config, &config);
-    let fingerprint = fingerprint(&text);
+    log_discovery(Some(&current.config), &config);
+    let fingerprint = watched_fingerprint(&text, config.discovery.file.as_deref());
     let next = Snapshot::build(
         config,
         &state.clock,
@@ -430,6 +439,37 @@ impl Snapshot {
 }
 
 /// A short, stable name for a config file's content.
+/// The fingerprint a reload compares: the main config text, and the generated targets file when one is
+/// configured, so a new generated file reloads the gateway exactly as an edit would (ADR 0022). Without a
+/// generated file this is the plain fingerprint of the text.
+fn watched_fingerprint(text: &str, generated: Option<&std::path::Path>) -> String {
+    match generated {
+        None => fingerprint(text),
+        Some(path) => {
+            let extra = std::fs::read_to_string(path).unwrap_or_default();
+            fingerprint(&format!("{text}\n\u{0}generated targets\u{0}\n{extra}"))
+        }
+    }
+}
+
+/// Says what became of the generated targets file, when that changed (or at startup): loaded, or ignored
+/// and why. A missing or empty file before the first sync is normal and is not noise.
+fn log_discovery(old: Option<&Config>, new: &Config) {
+    use crate::config::DiscoveryState;
+    if old.is_some_and(|o| o.discovery_state == new.discovery_state) {
+        return;
+    }
+    match &new.discovery_state {
+        DiscoveryState::Loaded(count) => {
+            tracing::info!(count, "generated targets loaded");
+        }
+        DiscoveryState::Ignored(reason) => {
+            tracing::warn!(%reason, "generated targets file ignored; serving with the main configuration");
+        }
+        DiscoveryState::Off | DiscoveryState::Missing | DiscoveryState::Empty => {}
+    }
+}
+
 fn fingerprint(text: &str) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(text.as_bytes()))[..12].to_string()
