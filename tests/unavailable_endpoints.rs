@@ -190,6 +190,9 @@ async fn a_dead_first_target_no_longer_fails_a_fastest_route_or_a_pool() {
         (401, plain()),
         (400, not_found()),
         (404, not_found()),
+        // A permanently removed model, and a key with no credit left (found with a live free pool).
+        (410, plain()),
+        (402, plain()),
     ] {
         let rig = rig(status, body.clone(), &format!("{FASTEST}{POOL}")).await;
         for route in ["fast", "pool"] {
@@ -369,4 +372,29 @@ async fn explain_says_whether_a_route_moves_on_for_unavailable_answers() {
         explain("optin").await["fallback_includes_unavailable"],
         true
     );
+}
+
+/// The exact set of client errors that describe the endpoint (ADR 0023): on a `fastest` pool each moves on
+/// to the next member, and every other 4xx is a request error that ends the request, as before. Pinning the
+/// whole range means a status added to (or dropped from) the classification is a visible, deliberate change.
+/// Statuses such as 405 and 407 are left as request errors until a provider is seen answering them.
+#[tokio::test]
+async fn exactly_the_endpoint_describing_client_errors_move_a_pool_on() {
+    const DESCRIBE_THE_ENDPOINT: [u16; 5] = [401, 402, 403, 404, 410];
+    for status in 400..=451u16 {
+        if StatusCode::from_u16(status).is_err() || status == 429 || status == 408 {
+            continue; // not a status, or a class of its own with its own tests
+        }
+        let rig = rig(status, plain(), &format!("{FASTEST}{POOL}")).await;
+        let (code, target) = rig.ask("pool").await;
+        if DESCRIBE_THE_ENDPOINT.contains(&status) {
+            assert_eq!(
+                (code, target.as_str()),
+                (200, "b-live"),
+                "{status} describes the endpoint and the pool moves on"
+            );
+        } else {
+            assert_eq!(code, status, "{status} describes the request and ends it");
+        }
+    }
 }

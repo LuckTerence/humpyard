@@ -127,11 +127,14 @@ const MODEL_GONE_CODES: [&str; 3] = [
 /// How much of an error body is looked at when checking for a model-gone code.
 const MODEL_GONE_SCAN_BYTES: usize = 4096;
 
-/// Whether an upstream answer says this endpoint cannot serve the request at all: 404, 401, or a 400 whose
-/// error code says the model is gone. These describe the endpoint, not the request (ADR 0023).
+/// Whether an upstream answer says this endpoint cannot serve the request at all: 404, 410 (gone), 401,
+/// 402 (no credit left), or a 400 whose error code says the model is gone. These describe the endpoint, not
+/// the request (ADR 0023).
 fn is_unavailable_answer(status: StatusCode, body: &str) -> bool {
     status == StatusCode::NOT_FOUND
+        || status == StatusCode::GONE
         || status == StatusCode::UNAUTHORIZED
+        || status == StatusCode::PAYMENT_REQUIRED
         || (status == StatusCode::BAD_REQUEST && model_gone(body))
 }
 
@@ -493,7 +496,15 @@ mod tests {
     fn answers_that_describe_the_endpoint_are_unavailable() {
         let gone = r#"{"error":{"message":"x","code":"model_not_found"}}"#;
         let typed = r#"{"error":{"message":"x","type":"model_decommissioned"}}"#;
-        for (status, body) in [(404, ""), (401, ""), (404, "{}"), (400, gone), (400, typed)] {
+        for (status, body) in [
+            (404, ""),
+            (401, ""),
+            (410, ""),
+            (402, "{}"),
+            (404, "{}"),
+            (400, gone),
+            (400, typed),
+        ] {
             assert_eq!(
                 fallback_class(&answer(status, body)),
                 Some(FallbackClass::Unavailable),

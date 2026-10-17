@@ -33,6 +33,15 @@ targets from the configuration (a different, slower fix that needs a prober or a
 and relying on the unmeasured-first rule changing (it would only hide the cause, and a 404 target would still
 be first on every cooldown probe).
 
+## Amendment (2026-10-17)
+
+The first live free pool in front of a real tier found two statuses the list missed: `410 Gone` (a model
+removed for good, answered on every request by one member, which a `fastest` route then tried first every time)
+and `402 Payment Required` (a key with no credit left). Both describe the endpoint and are now treated like a
+404 and a 401. Change: `openspec/changes/add-gone-and-payment-unavailable`. A test now pins the exact set of
+client errors that describe the endpoint across 400 to 451, so a status added later is a visible decision;
+405 and 407 stay request errors until a provider is seen answering them.
+
 ## Consequences
 
 A pool of free models survives dead members: the request moves on, the dead endpoint cools after the

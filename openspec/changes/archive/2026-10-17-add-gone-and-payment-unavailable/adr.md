@@ -7,4 +7,4 @@ extends the list with the same reasoning and amends the ADR in place.
 
 ## Outcome
 
-No new ADR; ADR 0023 is amended with the two statuses and the date.
+No new ADR; ADR 0023 is amended with the two statuses and the date (done in this change).
