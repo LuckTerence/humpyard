@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use humpyard::config::Config;
+use humpyard::discover;
 use humpyard::migrate;
 use humpyard::prices;
 use humpyard::server;
@@ -37,6 +38,59 @@ enum Command {
     /// (its tags as strengths, its context window), and `auto-fastest` / `tag:<strength>` pool routes.
     /// Reads ModelRelay's admin API (or two saved responses); never copies a key and never edits a file.
     MigrateModelrelay(MigrateArgs),
+    /// Find the free models providers offer that a pool does not have, and ones they no longer offer:
+    /// `check` reports, `sync` rebuilds the generated targets file `serve` reads. Never edits your config.
+    Models {
+        #[command(subcommand)]
+        command: ModelsCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelsCommand {
+    /// Report new, gone and drifted models for every provider that sets `discover`; exits 0 when there is
+    /// nothing to review, 1 when there is, 2 when a source or the config could not be used.
+    Check(ModelsArgs),
+    /// Rebuild the generated targets file (`[discovery] file`) from the sources, only when it changes.
+    /// Exits 0 on success, 1 when a guardrail refused the run, 2 when a source or the config could not be used.
+    Sync(SyncArgs),
+}
+
+#[derive(clap::Args)]
+struct ModelsArgs {
+    /// The configuration file.
+    #[arg(short, long)]
+    config: PathBuf,
+    /// Only this provider (its name in `[providers.<name>]`).
+    #[arg(short, long)]
+    provider: Option<String>,
+    /// Print the report as JSON.
+    #[arg(long)]
+    json: bool,
+    /// Also report new paid chat models (with their price), for providers on a paid plan; they are never
+    /// added automatically, and finding one makes the exit code 1.
+    #[arg(long)]
+    paid: bool,
+    /// Where the dataset is read (testing); https only, or http to a loopback host.
+    #[arg(long, hide = true, default_value = prices::MODELS_DEV_URL)]
+    source_url: String,
+}
+
+#[derive(clap::Args)]
+struct SyncArgs {
+    /// The configuration file.
+    #[arg(short, long)]
+    config: PathBuf,
+    /// Only this provider.
+    #[arg(short, long)]
+    provider: Option<String>,
+    /// Repeat on this interval (for example 6h) instead of running once; a failed run is logged and the
+    /// loop goes on. For a sidecar or a second container where there is no scheduler.
+    #[arg(long)]
+    every: Option<String>,
+    /// Where the dataset is read (testing); https only, or http to a loopback host.
+    #[arg(long, hide = true, default_value = prices::MODELS_DEV_URL)]
+    source_url: String,
 }
 
 #[derive(clap::Args)]
@@ -162,6 +216,99 @@ async fn load_prices(args: &PriceArgs) -> Result<Vec<prices::Report>, prices::Pr
             })
         })
         .collect()
+}
+
+/// `models check` and `models sync` (ADR 0022).
+async fn models_command(command: ModelsCommand) -> ExitCode {
+    match command {
+        ModelsCommand::Check(args) => {
+            match discover::gather(
+                &args.config,
+                &args.source_url,
+                args.provider.as_deref(),
+                args.paid,
+            )
+            .await
+            {
+                Ok(gathered) => {
+                    if args.json {
+                        println!("{}", discover::report_json(&gathered.plan));
+                    } else {
+                        print!("{}", discover::render_report(&gathered.plan));
+                    }
+                    ExitCode::from(u8::from(gathered.plan.needs_review()))
+                }
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    ExitCode::from(EXIT_UNUSABLE)
+                }
+            }
+        }
+        ModelsCommand::Sync(args) => sync_command(args).await,
+    }
+}
+
+/// One `models sync` run, or a loop of them with `--every`.
+async fn sync_command(args: SyncArgs) -> ExitCode {
+    let Some(every) = args.every.as_deref() else {
+        return sync_once(&args).await;
+    };
+    let every = match discover::parse_every(every) {
+        Ok(every) => every,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_UNUSABLE);
+        }
+    };
+    loop {
+        // A failed run is logged and the loop goes on: the next one may find the sources back.
+        let _ = sync_once(&args).await;
+        tokio::time::sleep(every).await;
+    }
+}
+
+async fn sync_once(args: &SyncArgs) -> ExitCode {
+    let gathered = match discover::gather(
+        &args.config,
+        &args.source_url,
+        args.provider.as_deref(),
+        false,
+    )
+    .await
+    {
+        Ok(gathered) => gathered,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::from(EXIT_UNUSABLE);
+        }
+    };
+    print!("{}", discover::render_report(&gathered.plan));
+    match discover::apply(&gathered) {
+        Ok(discover::SyncOutcome::Written) => {
+            println!(
+                "wrote {} generated targets ({} added, {} removed)",
+                gathered.plan.desired.len(),
+                gathered.plan.added.len(),
+                gathered.plan.removed.len()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(discover::SyncOutcome::Unchanged) => {
+            println!(
+                "unchanged: {} generated targets",
+                gathered.plan.desired.len()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(discover::SyncOutcome::Refused(reason)) => {
+            eprintln!("refused: {reason}");
+            ExitCode::FAILURE
+        }
+        Err(error) => {
+            eprintln!("error: {error}");
+            ExitCode::from(EXIT_UNUSABLE)
+        }
+    }
 }
 
 /// `migrate-modelrelay`: read the two `ModelRelay` responses, print the fragment, report on stderr.
@@ -355,6 +502,9 @@ async fn main() -> ExitCode {
     if let Command::Prices { command } = command {
         return prices_command(command).await;
     }
+    if let Command::Models { command } = command {
+        return models_command(command).await;
+    }
     if let Command::MigrateModelrelay(args) = command {
         return match migrate_command(args).await {
             Ok(()) => ExitCode::SUCCESS,
@@ -391,6 +541,11 @@ async fn run(command: Command) -> Result<(), String> {
                 humpyard::config::DiscoveryState::Empty => {
                     println!("generated targets: file is empty");
                 }
+                humpyard::config::DiscoveryState::Disabled => {
+                    println!(
+                        "generated targets: discovery is switched off ([discovery] enabled = false)"
+                    );
+                }
                 humpyard::config::DiscoveryState::Off => {}
             }
             Ok(())
@@ -402,7 +557,7 @@ async fn run(command: Command) -> Result<(), String> {
             println!("Add to your config:\n\n[keys.{id}]\nsha256 = \"{hash}\"");
             Ok(())
         }
-        Command::Prices { .. } | Command::MigrateModelrelay(_) => Ok(()), // handled in `main`
+        Command::Prices { .. } | Command::MigrateModelrelay(_) | Command::Models { .. } => Ok(()), // handled in `main`
         Command::Serve { config: path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             let listener = tokio::net::TcpListener::bind(config.listen)

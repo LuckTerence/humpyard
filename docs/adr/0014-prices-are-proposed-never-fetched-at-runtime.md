@@ -1,6 +1,6 @@
 # 0014. Prices are proposed by a CLI and never fetched at runtime
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-12
 - Supersedes: none
 - Change: [add-price-import](../../openspec/changes/add-price-import)
@@ -28,3 +28,11 @@ one, and it bypasses review); a bundled price table in the binary (stale the day
 
 Serving behavior is unchanged by any source. Operators get cheap, reviewable updates and a drift
 signal, at the cost of one manual step. A test must keep `serve` free of price-source requests.
+
+## Refined by ADR 0022
+
+The rule that the serving process never fetches third-party data stands, for prices and for model lists.
+[ADR 0022](0022-free-pool-membership-may-be-updated-on-a-schedule-without-review.md) allows one narrow
+exception to "an operator reviews every change": the membership of explicitly opted-in free pools may be
+updated on a schedule by a separate command, under guardrails. Prices are untouched by it.
+

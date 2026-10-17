@@ -26,6 +26,8 @@ const MAX_TARGETS: usize = 500;
 pub enum DiscoveryState {
     /// No `[discovery] file` is configured.
     Off,
+    /// A file is configured but `[discovery] enabled` is false, so it is not read.
+    Disabled,
     /// A file is configured but does not exist yet (the first sync has not run).
     Missing,
     /// The file exists and is empty.
@@ -42,6 +44,7 @@ impl DiscoveryState {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Off => "off",
+            Self::Disabled => "disabled",
             Self::Missing => "missing",
             Self::Empty => "empty",
             Self::Loaded(_) => "loaded",
@@ -85,6 +88,9 @@ pub(super) fn load(
     let Some(path) = raw.discovery.file.clone() else {
         return (BTreeSet::new(), DiscoveryState::Off);
     };
+    if !raw.discovery.enabled {
+        return (BTreeSet::new(), DiscoveryState::Disabled);
+    }
     let Some(text) = read(&path) else {
         return (BTreeSet::new(), DiscoveryState::Missing);
     };
@@ -115,10 +121,19 @@ fn parse(text: &str, raw: &RawConfig) -> Result<Vec<(String, RawTarget)>, String
             file.targets.len()
         ));
     }
+    // Providers that have opted in, and those that have opted out again with `enabled = false`: the targets
+    // of the latter are skipped at once (the next sync removes them from the file), while a provider that
+    // never opted in still makes the file invalid.
     let opted_in: BTreeSet<&str> = raw
         .providers
         .iter()
-        .filter(|(_, p)| p.discover.is_some())
+        .filter(|(_, p)| p.discover.as_ref().is_some_and(|d| d.enabled))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let opted_out: BTreeSet<&str> = raw
+        .providers
+        .iter()
+        .filter(|(_, p)| p.discover.as_ref().is_some_and(|d| !d.enabled))
         .map(|(name, _)| name.as_str())
         .collect();
     let hand_written: BTreeSet<(&str, &str)> = raw
@@ -151,6 +166,13 @@ fn parse(text: &str, raw: &RawConfig) -> Result<Vec<(String, RawTarget)>, String
             ));
         }
         validate_strengths(&name, &target.strengths).map_err(|e| e.to_string())?;
+        if target
+            .endpoints
+            .iter()
+            .any(|e| opted_out.contains(e.provider.as_str()))
+        {
+            continue;
+        }
         for endpoint in &target.endpoints {
             if !opted_in.contains(endpoint.provider.as_str()) {
                 return Err(format!(

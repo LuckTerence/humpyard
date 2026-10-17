@@ -10,8 +10,13 @@ discovery is the missing part, not an extra.
 
 ## What Changes
 
-- **Providers opt in** to discovery: `discover = { strengths = ["general"] }` on a provider (which already
-  names its models.dev provider through `price_source`).
+- **Opt in at two levels, and out again at either.** A global master switch, `[discovery] enabled` (default
+  false, needs `file`), and per provider `discover = { strengths = ["general"] }` (which already names its
+  models.dev provider through `price_source`), with `enabled = false` to opt a provider out without deleting
+  its settings. With the master switch off, `serve` does not read the file and `sync` refuses to write; `check`
+  still reports.
+- **Paid providers are reported, never added**: `models check --paid` lists new paid chat models with their
+  price and window.
 - **`humpyard models check`** reports what discovery would change: models the source lists that no target uses
   (free chat models only), configured models the source no longer lists, and declared windows that drifted.
   Exit codes like `prices check` (0 clean, 1 something to review, 2 unusable), so a scheduled job can alert.

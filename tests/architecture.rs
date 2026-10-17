@@ -74,6 +74,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("pricing", module(Engine, &["config", "num"])),
         // Reads price sources for the `prices` command only; see the serving-path test below.
         ("prices", module(Core, &["config"])),
+        // Reads the sources for the `models` commands only; see the serving-path tests (ADR 0022).
+        ("discover", module(Core, &["config", "num", "prices"])),
         // Reads a ModelRelay setup for the `migrate-modelrelay` command only; see the serving-path test.
         ("migrate", module(Core, &["config", "num"])),
         // Polls provider usage while serving; advisory and fail-open (ADR 0015).
@@ -307,7 +309,7 @@ fn only_the_prices_command_uses_the_price_source_module() {
     let mut offenders = Vec::new();
     for path in rust_files(&src) {
         let module = module_of(path.strip_prefix(&src).unwrap());
-        if matches!(module.as_str(), "prices" | "main" | "lib") {
+        if matches!(module.as_str(), "prices" | "discover" | "main" | "lib") {
             continue;
         }
         let code = production_code(&fs::read_to_string(&path).unwrap());
@@ -340,6 +342,28 @@ fn only_the_migrate_command_uses_the_migration_module() {
     assert!(
         offenders.is_empty(),
         "these files use the migration module, which only `humpyard migrate-modelrelay` may: {offenders:?}"
+    );
+}
+
+/// ADR 0022: only the `models` commands (`main`) may use the module that reads the sources, so `serve` can
+/// never fetch a model list; it only reads the file those commands write (inside `config`).
+#[test]
+fn only_the_models_commands_use_the_discovery_module() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let module = module_of(path.strip_prefix(&src).unwrap());
+        if matches!(module.as_str(), "discover" | "main" | "lib") {
+            continue;
+        }
+        let code = production_code(&fs::read_to_string(&path).unwrap());
+        if code.contains("discover::") || code.contains("humpyard::discover") {
+            offenders.push(path.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these files use the discovery module, which only `humpyard models` may: {offenders:?}"
     );
 }
 

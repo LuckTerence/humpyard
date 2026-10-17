@@ -35,6 +35,7 @@ reload_poll_secs = 1
 enabled = true
 bearer_sha256 = "{hash}"
 [discovery]
+enabled = true
 file = "{file}"
 {extra}
 [providers.free]
@@ -324,6 +325,83 @@ endpoints = [{ provider = "p", model = "m" }]
         |n| std::env::var(n).ok(),
     );
     assert!(no_source.unwrap_err().to_string().contains("price_source"));
+}
+
+#[test]
+fn the_master_switch_is_off_by_default_and_turns_the_file_off() {
+    // With the switch off the file is not even read: the targets are not merged and the state says so.
+    let (_dir, file) = dir_file("discovered.toml");
+    std::fs::write(&file, GOOD).unwrap();
+    let main = main_config("http://127.0.0.1:1", &file, "").replace("enabled = true\n", "");
+    let config = Config::from_toml_with(&main, |n| std::env::var(n).ok(), &|p| {
+        std::fs::read_to_string(p).ok()
+    })
+    .unwrap();
+    assert_eq!(config.discovery_state, DiscoveryState::Disabled);
+    assert!(config.generated_targets.is_empty());
+    assert_eq!(config.pools["pool"].members, ["home"]);
+    // And an explicit false is the same.
+    let off =
+        main_config("http://127.0.0.1:1", &file, "").replace("enabled = true", "enabled = false");
+    let config = Config::from_toml_with(&off, |n| std::env::var(n).ok(), &|p| {
+        std::fs::read_to_string(p).ok()
+    })
+    .unwrap();
+    assert_eq!(config.discovery_state, DiscoveryState::Disabled);
+}
+
+#[test]
+fn enabling_discovery_needs_a_file() {
+    let error = Config::from_toml(
+        r#"listen = "127.0.0.1:0"
+[discovery]
+enabled = true
+[providers.p]
+base_url = "http://127.0.0.1:1"
+api_key_env = "PATH"
+[targets.t]
+endpoints = [{ provider = "p", model = "m" }]
+"#,
+        |n| std::env::var(n).ok(),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("file"), "{error}");
+}
+
+#[test]
+fn a_provider_can_opt_out_without_losing_its_settings() {
+    // Two opted-in providers; the second switches itself off. Its targets are skipped at once and the
+    // first provider's are still loaded: opting out one provider does not invalidate the file.
+    let (_dir, file) = dir_file("discovered.toml");
+    std::fs::write(
+        &file,
+        format!(
+            "{GOOD}\n[targets.auto-two-gamma]\nstrengths = [\"general\"]\nendpoints = [{{ provider = \"two\", model = \"gamma\", price = {{ input = 0.0, output = 0.0 }} }}]\n"
+        ),
+    )
+    .unwrap();
+    let both = format!(
+        "{}[providers.two]\nbase_url = \"http://127.0.0.1:1\"\napi_key_env = \"PATH\"\nprice_source = \"models-dev:groq\"\ndiscover = {{ strengths = [\"general\"] }}\n",
+        main_config("http://127.0.0.1:1", &file, "")
+    );
+    let load = |text: &str| {
+        Config::from_toml_with(text, |n| std::env::var(n).ok(), &|p| {
+            std::fs::read_to_string(p).ok()
+        })
+        .unwrap()
+    };
+    assert_eq!(load(&both).discovery_state, DiscoveryState::Loaded(3));
+    // Turn off only provider `two`.
+    let opted_out = both.replacen(
+        "[providers.two]\nbase_url = \"http://127.0.0.1:1\"\napi_key_env = \"PATH\"\nprice_source = \"models-dev:groq\"\ndiscover = { strengths = [\"general\"] }",
+        "[providers.two]\nbase_url = \"http://127.0.0.1:1\"\napi_key_env = \"PATH\"\nprice_source = \"models-dev:groq\"\ndiscover = { strengths = [\"general\"], enabled = false }",
+        1,
+    );
+    let config = load(&opted_out);
+    assert_eq!(config.discovery_state, DiscoveryState::Loaded(2));
+    assert!(!config.generated_targets.contains("auto-two-gamma"));
+    assert!(config.generated_targets.contains("auto-free-alpha"));
 }
 
 struct Mock;

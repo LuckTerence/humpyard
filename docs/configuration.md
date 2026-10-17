@@ -62,9 +62,11 @@ See the [example configs](examples.md); `humpyard check-config <file>` validates
   `GET /v1/health` shows which endpoints are being skipped. See [Endpoint health](routing.md#endpoint-health).
 
 - `[discovery]` and `discover` on a provider (optional): the settings for **model discovery** (ADR 0022),
-  which keeps free pools current from a generated file. A provider opts in with
-  `discover = { strengths = ["general"] }` (it also needs `price_source`, which names the models.dev
-  provider); `[discovery]` has `file` (the generated file, an absolute path; `humpyard models sync` writes it
+  which keeps free pools current from a generated file; see [Keeping pools current](discovery.md), including
+  how to schedule it. It is **off until opted in at two levels**: `[discovery] enabled = true` (the master
+  switch, default false, needs `file`) and, per provider, `discover = { strengths = ["general"] }` (it also
+  needs `price_source`, which names the models.dev provider; `enabled = false` inside it opts that provider
+  out again). `[discovery]` also has `file` (the generated file, an absolute path; `humpyard models sync` writes it
   and `serve` reads it), `class` (default `public`, applied to every generated target), `max_added_per_run`
   (default 10), `max_removed_fraction` (default 0.5) and `exclude` (`provider/model` ids never to generate).
   `serve` only **reads** that file, at load and on every reload (the reload poll watches it too), and never

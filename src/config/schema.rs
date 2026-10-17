@@ -51,6 +51,10 @@ pub(super) struct RawConfig {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RawDiscovery {
+    /// The master switch. Off by default: nothing is read, merged or written until this is `true`, however
+    /// the providers are set. Turning it off again stops it at the next reload.
+    #[serde(default)]
+    pub(super) enabled: bool,
     /// The file `humpyard models sync` writes and `serve` reads. Use an absolute path.
     pub(super) file: Option<std::path::PathBuf>,
     /// The `class` of every generated target.
@@ -70,6 +74,7 @@ pub(super) struct RawDiscovery {
 impl Default for RawDiscovery {
     fn default() -> Self {
         Self {
+            enabled: false,
             file: None,
             class: default_discovery_class(),
             max_added_per_run: default_max_added_per_run(),
@@ -99,6 +104,10 @@ fn default_true() -> bool {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DiscoverSpec {
+    /// Turn discovery off for this provider without deleting its settings (default true). Its generated
+    /// targets stop being loaded at once and are removed at the next sync.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// What new models from this provider are treated as (plus `all`, and `reasoning` when the source says so).
     #[serde(default)]
     pub strengths: Vec<String>,
