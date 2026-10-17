@@ -5,7 +5,7 @@ component status (see [AGENTS.md](../AGENTS.md)). Diagrams are Mermaid and rende
 
 At-a-glance view of what shipped and what is next: [roadmap.md](roadmap.md).
 
-Last updated: 2026-10-15 (capability eligibility, ADR 0019; health-driven eligibility, ADR 0018; strict routes, ADR 0017; `/metrics` on one metrics registry, ADR 0016; quota history; roadmap page added). Earlier, 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-in strict fallback, stickiness, advisory cost-aware ordering and a native Anthropic upstream added; packaging row corrected). Operator-surface order: `/metrics`, health-driven eligibility, native Anthropic upstream, then the admin API and database-managed keys.
+Last updated: 2026-10-17 (the request-flow diagram redrawn top to bottom and split from the accounting diagram; capability eligibility, ADR 0019; health-driven eligibility, ADR 0018; strict routes, ADR 0017; `/metrics` on one metrics registry, ADR 0016; quota history; roadmap page added). Earlier, 2026-10-10 (roadmap refresh: auto-routing, pool classes with opt-in strict fallback, stickiness, advisory cost-aware ordering and a native Anthropic upstream added; packaging row corrected). Operator-surface order: `/metrics`, health-driven eligibility, native Anthropic upstream, then the admin API and database-managed keys.
 
 ## Component status
 
@@ -69,33 +69,36 @@ and the SQLite ledger. The planned order for the operator-facing surface is API 
 
 ## Current: request flow (implemented)
 
+The path of one request, top to bottom. Each step can end the request with an error; nothing reaches a
+provider before authorization, the budget check and planning have passed.
+
 ```mermaid
-flowchart LR
-    C1[OpenAI Chat client] --> API
-    C2[Codex / Responses client] --> API
-    C3[Anthropic client] --> API
-    subgraph GW[humpyard]
-        API[axum endpoints<br/>decode to Switchyard IR] --> AUTH[Auth<br/>virtual keys, allowlist]
-        AUTH --> BUD[Budget check<br/>402 when exhausted]
-        BUD --> RT[Routes<br/>built-in algorithm per route]
-        RT --> POL[Routing policy<br/>budget + custom]
-        POL --> RUN[Switchyard run<br/>selected target + fallbacks]
-        RUN --> MET[Metered client<br/>per request]
-        MET --> TC[Target client<br/>ordered endpoint failover]
-        TC --> EC[TranslatingLlmClient<br/>per endpoint]
-        EC -->|IR response or stream| TAP[Stream tap<br/>usage at end]
-        TAP --> ENC[Encode to client protocol<br/>SSE framing]
-        ENC --> API
-        MET -. entries .-> ACC[Accounting]
-        TAP -. entries .-> ACC
-        ACC --> TRK[Budget tracker<br/>live counters]
-        ACC --> LED[(SQLite ledger<br/>async writer)]
-        LED -. hydrate on start .-> TRK
-        TRK -.-> BUD
-        TRK -.-> POL
-    end
-    EC --> P1[(Provider A)]
-    EC --> P2[(Provider B)]
+flowchart TD
+    CL[Client<br/>OpenAI Chat, Responses or Anthropic] --> API[Decode<br/>to Switchyard IR]
+    API --> AUTH[Auth<br/>virtual key, allowed routes]
+    AUTH --> BUD[Budget check<br/>402 when exhausted]
+    BUD --> SEL[Route selection<br/>selector rules, then the requested route]
+    SEL --> PLAN[Planning<br/>remove: strict classes, policy,<br/>capabilities, health<br/>then order: speed and quality]
+    PLAN --> RUN[Switchyard run<br/>selected target and fallbacks]
+    RUN --> TC[Target client<br/>endpoint failover, circuit breakers]
+    TC --> PRV[(Provider)]
+    PRV --> TAP[Stream tap<br/>usage at the end]
+    TAP --> ENC[Encode to the client protocol<br/>JSON or SSE]
+    ENC --> OUT[Response to the client]
+```
+
+## Current: accounting (implemented)
+
+What happens to the usage of each call, off the request path. The ledger writer is asynchronous, so a slow
+or failing database never delays a response.
+
+```mermaid
+flowchart TD
+    CALL[Each upstream call<br/>and each finished stream] --> ACC[Accounting<br/>tokens and cost]
+    ACC --> LED[(SQLite ledger<br/>async writer)]
+    ACC --> TRK[Budget tracker<br/>live counters]
+    LED -. rebuilt on start .-> TRK
+    TRK -. spend and limits .-> BUD[Budget check<br/>and routing policy]
 ```
 
 ## Target: full pipeline (planned order is fixed)
