@@ -20,8 +20,16 @@ use humpyard::server;
 const CONFIG_JSON: &str = include_str!("fixtures/modelrelay/config.json");
 const MODELS_JSON: &str = include_str!("fixtures/modelrelay/models.json");
 
+/// A path no other test (or call) shares: tests run in parallel in one process, and writing the same
+/// file while another test's command reads it would hand that command an empty file.
+fn unique(name: &str) -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    std::env::temp_dir().join(format!("mig-{}-{n}-{name}", std::process::id()))
+}
+
 fn fixture(name: &str, body: &str) -> String {
-    let path = std::env::temp_dir().join(format!("mig-{}-{name}", std::process::id()));
+    let path = unique(name);
     std::fs::write(&path, body).unwrap();
     path.to_string_lossy().into_owned()
 }
@@ -124,7 +132,7 @@ fn the_class_option_is_applied() {
 
 #[test]
 fn an_existing_output_file_is_never_overwritten() {
-    let path = std::env::temp_dir().join(format!("mig-out-{}.toml", std::process::id()));
+    let path = unique("out.toml");
     std::fs::write(&path, "keep me").unwrap();
     let out = offline(&["--out", path.to_str().unwrap()]);
     assert!(!out.status.success());
@@ -135,7 +143,7 @@ fn an_existing_output_file_is_never_overwritten() {
     );
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "keep me");
 
-    let fresh = std::env::temp_dir().join(format!("mig-fresh-{}.toml", std::process::id()));
+    let fresh = unique("fresh.toml");
     let _ = std::fs::remove_file(&fresh);
     let out = offline(&["--out", fresh.to_str().unwrap()]);
     assert!(out.status.success(), "{}", text(&out.stderr));
