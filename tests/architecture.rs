@@ -75,7 +75,7 @@ fn rules() -> BTreeMap<&'static str, Module> {
         // Reads price sources for the `prices` command only; see the serving-path test below.
         ("prices", module(Core, &["config"])),
         // Reads a ModelRelay setup for the `migrate-modelrelay` command only; see the serving-path test.
-        ("migrate", module(Core, &["config"])),
+        ("migrate", module(Core, &["config", "num"])),
         // Polls provider usage while serving; advisory and fail-open (ADR 0015).
         ("quota", module(Core, &["clock", "config"])),
         // Operational metrics: one registry, bounded labels (ADR 0016).

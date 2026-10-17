@@ -81,6 +81,7 @@ fn saved_responses_become_a_fragment_that_loads() {
         "codestral",
         "kiro",
         "qwen-3-235b",
+        "operator-filtered-model",
         "gemma-3-4b",
         "nvap",
         "gsk_",
