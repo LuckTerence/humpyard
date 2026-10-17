@@ -72,6 +72,15 @@ The report lists each of these, with the reason:
 - ModelRelay's ping scores, quality ranking, request logs and telemetry. humpyard orders a `fastest` route by
   what it observes itself.
 
+## Dead models do not break a pool
+
+Free providers remove models and revoke access without notice, and a good share of a ModelRelay setup is
+`down` at any moment (on the reference instance most of the usable models were). ModelRelay tries the next
+model; humpyard does the same on `fastest` routes and pool routes (which is what the migration generates): an
+answer of 404 or 401, or a 400 naming a missing model, moves the request to the next target and counts
+against the dead endpoint, so after a few such answers it is skipped and probed again later. Other routes you
+write keep their old behavior unless they list `unavailable` in `fallback_on`.
+
 ## Moving over
 
 1. Run the command and review the fragment; merge it into your configuration (or an included file).

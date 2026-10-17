@@ -27,7 +27,10 @@ every behavior below, so the table is verified, not aspirational.
 - A prompt too large for the public tier goes to paid; a small one stays public.
 - With `fallback_on = ["overflow"]`, a public blip (503, 429, timeout) is reported to the client
   and paid is never called; only an overflow reaches paid.
-- Client errors (400/401/404) do not fall back, so malformed requests never spend paid credits.
+- Request errors (400, 422) do not fall back, so malformed requests never spend paid credits. A 401 or
+  404 describes the endpoint (the key is rejected, the model is gone) and also does not fall back to the next
+  target on these routes unless the route lists `unavailable` in `fallback_on`; it does count against the
+  endpoint's health and moves on within a target.
 - A paid model over its quota (429) is rotated out after repeated failures, is not hammered while
   cooling down, and rejoins after one successful probe. If every model in a pool is limited, the
   client sees the 429.

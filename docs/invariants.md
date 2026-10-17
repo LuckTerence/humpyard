@@ -119,6 +119,13 @@ in an ADR (`docs/adr/`) in the same change.
     `a_minimum_window_counts_only_declared_windows_and_says_who_was_left_out`); see
     [ADR-0021](adr/0021-strengths-build-pools-at-load-time-and-never-remove-a-target.md).
 
+22. **A dead endpoint cannot fail every request of a pool.** A 404, 401 or 403 (or a missing-model 400)
+    counts against its endpoint, so it cools and is skipped; on `fastest` and pool routes it also moves the
+    request to the next target. A 400 or 422 is the request's error and ends it. *Enforced by*
+    `tests/unavailable_endpoints.rs` (`a_dead_first_target_no_longer_fails_a_fastest_route_or_a_pool`,
+    `request_errors_still_end_the_request`, `other_routes_keep_their_behavior_unless_they_opt_in`); see
+    [ADR-0023](adr/0023-answers-that-describe-the-endpoint-make-it-unavailable.md).
+
 ## Data and secrets
 
 8. **No plaintext secrets.** Provider keys come from environment variables; client keys exist only

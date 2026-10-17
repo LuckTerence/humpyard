@@ -537,6 +537,9 @@ pub enum FallbackClass {
     Connection,
     /// HTTP 403.
     Forbidden,
+    /// The endpoint is gone or rejects the key: HTTP 404 or 401, or a 400/404 naming a missing model.
+    /// On by default only for `fastest` and pool routes (ADR 0023).
+    Unavailable,
 }
 
 impl FallbackClass {
@@ -550,26 +553,47 @@ impl FallbackClass {
             Self::ServerError => "server_error",
             Self::Connection => "connection",
             Self::Forbidden => "forbidden",
+            Self::Unavailable => "unavailable",
         }
     }
 }
 
-/// Which failures make a route hand the request to its next target. The default is all of them.
+/// Which failures make a route hand the request to its next target. Without a list, every failure falls
+/// through, except `unavailable`, which is included only on `fastest` and pool routes (ADR 0023).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FallbackOn(Option<std::collections::BTreeSet<FallbackClass>>);
+pub struct FallbackOn {
+    classes: Option<std::collections::BTreeSet<FallbackClass>>,
+    unavailable_by_default: bool,
+}
 
 impl FallbackOn {
+    /// Exactly these classes, as the operator listed them.
     pub fn only(classes: &[FallbackClass]) -> Self {
-        Self(Some(classes.iter().copied().collect()))
+        Self {
+            classes: Some(classes.iter().copied().collect()),
+            unavailable_by_default: false,
+        }
     }
 
-    /// The configured classes, or `None` when every failure falls through.
+    /// With no list, also fall through on `unavailable` (routes built to try many targets).
+    #[must_use]
+    pub fn with_unavailable_by_default(mut self) -> Self {
+        self.unavailable_by_default = true;
+        self
+    }
+
+    /// The configured classes, or `None` when no list was given.
     pub fn classes(&self) -> Option<Vec<FallbackClass>> {
-        self.0.as_ref().map(|set| set.iter().copied().collect())
+        self.classes
+            .as_ref()
+            .map(|set| set.iter().copied().collect())
     }
 
     pub fn allows(&self, class: FallbackClass) -> bool {
-        self.0.as_ref().is_none_or(|set| set.contains(&class))
+        match &self.classes {
+            Some(set) => set.contains(&class),
+            None => class != FallbackClass::Unavailable || self.unavailable_by_default,
+        }
     }
 }
 
@@ -693,14 +717,31 @@ fn default_picker_mode() -> PickerMode {
 impl RouteSpec {
     /// Which failures hand the request to the next target.
     pub fn fallback_on(&self) -> FallbackOn {
-        match self {
+        let listed = match self {
             Self::Passthrough { fallback_on, .. }
             | Self::Fastest { fallback_on, .. }
             | Self::Random { fallback_on, .. }
             | Self::StageRouter { fallback_on, .. }
-            | Self::LlmClassifier { fallback_on, .. } => fallback_on
-                .as_deref()
-                .map_or_else(FallbackOn::default, FallbackOn::only),
+            | Self::LlmClassifier { fallback_on, .. } => fallback_on.as_deref(),
+        };
+        match listed {
+            // A list is taken exactly as written.
+            Some(classes) => FallbackOn::only(classes),
+            // No list: every class falls through; `unavailable` too on routes built to try many targets
+            // that may be gone (`fastest` and pool routes), and not on any other (ADR 0023).
+            None if self.tries_many_unreliable_targets() => {
+                FallbackOn::default().with_unavailable_by_default()
+            }
+            None => FallbackOn::default(),
+        }
+    }
+
+    /// A `fastest` route, or any route that is a pool.
+    fn tries_many_unreliable_targets(&self) -> bool {
+        match self {
+            Self::Fastest { .. } => true,
+            Self::Passthrough { pool, .. } | Self::Random { pool, .. } => pool.is_some(),
+            Self::StageRouter { .. } | Self::LlmClassifier { .. } => false,
         }
     }
 
