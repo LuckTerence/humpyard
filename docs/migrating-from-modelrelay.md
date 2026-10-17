@@ -56,9 +56,15 @@ models that **declare** a window count toward `min_ctx`.
 The report lists each of these, with the reason:
 
 - **Providers humpyard has no OpenAI-compatible base URL for** (for example Kiro) and **disabled providers**.
-- **Providers with no key** in ModelRelay (a local server or a custom endpoint that needs none is kept; give
-  its variable any non-empty value).
-- **Banned or hidden models.**
+- **Providers with no key** in ModelRelay, except Ollama and custom endpoints, which are kept (they may
+  need none): set the variable to the key if the server wants one, or to any non-empty value if not.
+- **Banned, hidden and filtered-out models.** Models ModelRelay's own filters removed (an excluded provider
+  or a minimum quality score, status `excluded`) are counted by provider in the report rather than listed;
+  bans are named. Models that are merely `down` or `timeout` at the moment are kept: humpyard's health
+  tracking handles a failing endpoint.
+- **Models with no usable context window** are migrated but declare none, so they are in `auto-fastest` and
+  `tag:` routes and absent from `+min_ctx:N` pools, as in ModelRelay. A window ModelRelay only knows as a
+  model maximum (not served by any provider) is not declared.
 - **Extra keys of a multi-account provider.** humpyard uses one key per provider, so one variable is
   referenced and the report says how many keys ModelRelay has; add the others as extra providers by hand if
   you need them.

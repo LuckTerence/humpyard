@@ -73,14 +73,64 @@ pub struct ProviderRow {
 pub struct ModelRow {
     pub model_id: String,
     pub provider_key: String,
+    /// The window as ModelRelay prints it: a number, or a string such as `"128k"` or `"1M"`.
     #[serde(default)]
-    pub ctx: Option<u64>,
+    pub ctx: Option<serde_json::Value>,
+    /// What ModelRelay actually routes with, when it reports it.
+    #[serde(default)]
+    pub ctx_info: Option<CtxInfo>,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]
     pub hidden: bool,
+}
+
+/// ModelRelay's `ctxInfo`: the context window it uses for `min_ctx` routing.
+#[derive(Debug, Deserialize)]
+pub struct CtxInfo {
+    #[serde(default)]
+    pub tokens: Option<u64>,
+    /// False when the figure is only a model maximum that no provider is known to serve.
+    #[serde(default)]
+    pub usable: Option<bool>,
+}
+
+impl ModelRow {
+    /// The context window to declare: what ModelRelay routes with (`ctxInfo.tokens` when usable,
+    /// including a window it capped by observed quota), else the printed `ctx` for older versions
+    /// that report no `ctxInfo`. A model maximum that is not usable is not a window.
+    pub fn window(&self) -> Option<u64> {
+        if let Some(info) = &self.ctx_info {
+            return if info.usable == Some(false) {
+                None
+            } else {
+                info.tokens.filter(|t| *t > 0)
+            };
+        }
+        match self.ctx.as_ref()? {
+            serde_json::Value::Number(n) => n.as_u64().filter(|t| *t > 0),
+            serde_json::Value::String(text) => parse_size(text),
+            _ => None,
+        }
+    }
+}
+
+/// `"128k"` is 128,000, `"1M"` is 1,000,000 (ModelRelay's own arithmetic), and a bare number is itself.
+fn parse_size(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let (digits, factor) = match text.chars().last()? {
+        'k' | 'K' => (&text[..text.len() - 1], 1_000_u64),
+        'm' | 'M' => (&text[..text.len() - 1], 1_000_000),
+        _ => (text, 1),
+    };
+    let number: f64 = digits.trim().parse().ok()?;
+    if !(number.is_finite() && number > 0.0 && number <= 1e9) {
+        return None;
+    }
+    let value = crate::num::u64_from_f64_rounded(number * crate::num::f64_from_u64(factor));
+    (value > 0).then_some(value)
 }
 
 #[derive(Deserialize)]
@@ -295,17 +345,32 @@ fn plan_targets(models: &[ModelRow], used: &mut Used, report: &mut Report) -> Ve
     let mut targets: Vec<TargetPlan> = Vec::new();
     let mut taken: BTreeSet<String> = BTreeSet::new();
     let mut unknown_tags: BTreeSet<String> = BTreeSet::new();
+    let mut removed_counts: BTreeMap<(&str, String), usize> = BTreeMap::new();
     for model in models {
         let Some((resolved, seen)) = used.get_mut(&model.provider_key) else {
             continue; // its provider was reported already
         };
-        if model.hidden || matches!(model.status.as_deref(), Some("banned" | "disabled")) {
-            report.skipped.push(format!(
-                "model `{}/{}`: {} in ModelRelay",
-                model.provider_key,
-                model.model_id,
-                model.status.as_deref().unwrap_or("hidden")
-            ));
+        let removed = if model.hidden {
+            Some("hidden")
+        } else {
+            match model.status.as_deref() {
+                Some(status @ ("banned" | "disabled" | "excluded")) => Some(status),
+                _ => None,
+            }
+        };
+        if let Some(reason) = removed {
+            // A ban is a deliberate act on one model, so it is named. The rest come from the operator's
+            // filters (an excluded provider, a minimum quality score), so they are counted.
+            if reason == "banned" {
+                report.skipped.push(format!(
+                    "model `{}/{}`: banned in ModelRelay",
+                    model.provider_key, model.model_id
+                ));
+            } else {
+                *removed_counts
+                    .entry((reason, model.provider_key.clone()))
+                    .or_default() += 1;
+            }
             continue;
         }
         if !usable_model_id(&model.model_id) {
@@ -339,9 +404,21 @@ fn plan_targets(models: &[ModelRow], used: &mut Used, report: &mut Report) -> Ve
             name,
             provider: resolved.name.clone(),
             model: model.model_id.clone(),
-            ctx: model.ctx.filter(|c| *c > 0),
+            ctx: model.window(),
             strengths,
         });
+    }
+    let mut by_reason: BTreeMap<&str, Vec<(String, usize)>> = BTreeMap::new();
+    for ((reason, provider), count) in removed_counts {
+        by_reason.entry(reason).or_default().push((provider, count));
+    }
+    for (reason, providers) in by_reason {
+        let total: usize = providers.iter().map(|(_, n)| n).sum();
+        let detail: Vec<String> = providers.iter().map(|(p, n)| format!("{p} {n}")).collect();
+        report.skipped.push(format!(
+            "{total} model(s) {reason} in ModelRelay: {}",
+            detail.join(", ")
+        ));
     }
     if !unknown_tags.is_empty() {
         report.skipped.push(format!(
@@ -377,7 +454,7 @@ pub fn migrate(providers: &[ProviderRow], models: &[ModelRow], options: &Options
         let _ = writeln!(out, "api_key_env = {}", quoted(&env_name(name)));
         if resolved.keyless_ok {
             out.push_str(
-                "# local or keyless server: the variable still needs some non-empty value\n",
+                "# ModelRelay has no key for this one: set the variable to its key if the server needs one,\n# or to any non-empty value if it does not (a local server)\n",
             );
         }
         out.push('\n');
@@ -747,5 +824,71 @@ mod tests {
         assert!(check_url("http://127.0.0.1:7352").is_ok());
         assert!(check_url("http://modelrelay.internal:7352").is_err());
         assert!(check_url("ftp://x").is_err());
+    }
+
+    fn window_of(json: &str) -> Option<u64> {
+        models(&format!("[{json}]"))[0].window()
+    }
+
+    #[test]
+    fn windows_follow_what_modelrelay_routes_with() {
+        let base = r#""modelId":"m","providerKey":"groq""#;
+        // Printed strings use ModelRelay's own arithmetic.
+        assert_eq!(
+            window_of(&format!(r#"{{{base},"ctx":"128k"}}"#)),
+            Some(128_000)
+        );
+        assert_eq!(
+            window_of(&format!(r#"{{{base},"ctx":"1M"}}"#)),
+            Some(1_000_000)
+        );
+        assert_eq!(
+            window_of(&format!(r#"{{{base},"ctx":"262144"}}"#)),
+            Some(262_144)
+        );
+        assert_eq!(
+            window_of(&format!(r#"{{{base},"ctx":65536}}"#)),
+            Some(65_536)
+        );
+        assert_eq!(window_of(&format!(r#"{{{base},"ctx":null}}"#)), None);
+        assert_eq!(window_of(&format!(r#"{{{base},"ctx":"lots"}}"#)), None);
+        assert_eq!(window_of(&format!(r#"{{{base},"ctx":"0k"}}"#)), None);
+        // `ctxInfo` wins: a usable window, including one ModelRelay capped by observed quota ...
+        let capped = r#""ctx":"131072","ctxInfo":{"tokens":8000,"usable":true,"capped":true,"reason":"quota"}"#;
+        assert_eq!(window_of(&format!("{{{base},{capped}}}")), Some(8_000));
+        // ... and a model maximum that no provider is known to serve is not a window at all.
+        let maximum =
+            r#""ctx":"512k","ctxInfo":{"tokens":null,"usable":false,"reason":"model-maximum"}"#;
+        assert_eq!(window_of(&format!("{{{base},{maximum}}}")), None);
+    }
+
+    #[test]
+    fn models_excluded_by_the_operators_filters_are_not_migrated_but_down_ones_are() {
+        let cfg = providers(r#"[{"key":"groq","enabled":true,"hasKey":true}]"#);
+        let mdl = models(
+            r#"[
+              {"modelId":"filtered","providerKey":"groq","status":"excluded","tags":["general"]},
+              {"modelId":"slow-now","providerKey":"groq","status":"down","tags":["general"]},
+              {"modelId":"late","providerKey":"groq","status":"timeout","tags":["general"]},
+              {"modelId":"fine","providerKey":"groq","status":"up","tags":["general"]}
+            ]"#,
+        );
+        let m = migrate(&cfg, &mdl, &options(&[]));
+        assert!(!m.fragment.contains("filtered"), "{}", m.fragment);
+        for kept in ["slow-now", "late", "fine"] {
+            assert!(
+                m.fragment.contains(kept),
+                "{kept} is a ping state, not a removal:\n{}",
+                m.fragment
+            );
+        }
+        assert!(
+            m.report
+                .skipped
+                .iter()
+                .any(|s| s.starts_with("1 model(s) excluded") && s.contains("groq 1")),
+            "{:?}",
+            m.report.skipped
+        );
     }
 }
