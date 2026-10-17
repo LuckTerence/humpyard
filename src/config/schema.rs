@@ -234,6 +234,18 @@ fn default_max_retries() -> u32 {
     1
 }
 
+fn default_explore() -> f64 {
+    0.1
+}
+
+fn default_min_samples() -> u32 {
+    3
+}
+
+fn default_max_age_secs() -> u64 {
+    600
+}
+
 fn default_confidence() -> f64 {
     0.5
 }
@@ -505,6 +517,28 @@ pub enum RouteSpec {
         #[serde(default)]
         allowed_classes: Option<Vec<String>>,
     },
+    /// Orders the targets that are still eligible by recently observed time to answer, fastest
+    /// first, with some exploration (ADR 0020).
+    Fastest {
+        targets: Vec<String>,
+        /// Probability that a request tries a random eligible target first.
+        #[serde(default = "default_explore")]
+        explore: f64,
+        /// Answered attempts a target needs before its figure is believed.
+        #[serde(default = "default_min_samples")]
+        min_samples: u32,
+        /// A figure older than this counts as unmeasured.
+        #[serde(default = "default_max_age_secs")]
+        max_age_secs: u64,
+        /// Makes the exploration draws reproducible.
+        seed: Option<u64>,
+        /// Failures that move on to the next target; all of them when absent.
+        #[serde(default)]
+        fallback_on: Option<Vec<FallbackClass>>,
+        /// Target classes this route may use at all (ADR 0017).
+        #[serde(default)]
+        allowed_classes: Option<Vec<String>>,
+    },
     Random {
         targets: Vec<String>,
         weights: Option<Vec<f64>>,
@@ -568,6 +602,7 @@ impl RouteSpec {
     pub fn fallback_on(&self) -> FallbackOn {
         match self {
             Self::Passthrough { fallback_on, .. }
+            | Self::Fastest { fallback_on, .. }
             | Self::Random { fallback_on, .. }
             | Self::StageRouter { fallback_on, .. }
             | Self::LlmClassifier { fallback_on, .. } => fallback_on
@@ -580,6 +615,9 @@ impl RouteSpec {
     pub fn allowed_classes(&self) -> Option<&[String]> {
         match self {
             Self::Passthrough {
+                allowed_classes, ..
+            }
+            | Self::Fastest {
                 allowed_classes, ..
             }
             | Self::Random {
@@ -597,7 +635,9 @@ impl RouteSpec {
     /// Every target name the route mentions.
     pub fn target_refs(&self) -> Vec<&str> {
         let lists: Vec<&Vec<String>> = match self {
-            Self::Passthrough { targets, .. } | Self::Random { targets, .. } => vec![targets],
+            Self::Passthrough { targets, .. }
+            | Self::Fastest { targets, .. }
+            | Self::Random { targets, .. } => vec![targets],
             Self::StageRouter {
                 efficient, capable, ..
             } => vec![efficient, capable],

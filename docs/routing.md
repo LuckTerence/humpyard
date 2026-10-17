@@ -17,6 +17,7 @@ the selected target (failing over across its endpoints), then encode the answer 
 |---|---|
 | `passthrough` | First target; the rest are fallbacks |
 | `random` | Weighted pick (`weights`, `seed`); the rest are fallbacks |
+| `fastest` | The eligible targets ordered by recently observed time to answer, with some exploration (`explore`, `min_samples`, `max_age_secs`, `seed`); see [Fastest routes](#fastest-routes) |
 | `stage_router` | Tool-result signals choose `efficient` or `capable` (`mode`, `confidence_threshold`) |
 | `llm_classifier` | A `judge` target decides: `capability` mode judges task difficulty, `escalation` mode latches the session to `capable` after `confirmations` verdicts |
 
@@ -355,6 +356,44 @@ Routes, selector rules, targets, providers, keys and budgets can be edited and r
 restart (SIGHUP, or `reload_poll_secs`); see [deployment.md](deployment.md#reloading-the-configuration).
 A reload is all or nothing, in-flight requests keep the configuration they started with, and
 endpoint health and unchanged routes' session state carry over.
+
+## Fastest routes
+
+A route of `type = "fastest"` lists `targets` like a passthrough route, but tries them by speed instead of
+in the order written. It is meant for pools of interchangeable endpoints whose speed varies, such as free
+tiers.
+
+```toml
+[routes.free-pool]
+type = "fastest"
+targets = ["groq", "cerebras", "openrouter-free"]
+explore = 0.1       # share of requests that try a random eligible target first (default 0.1)
+min_samples = 3     # answered attempts before a target's figure is believed (default 3)
+max_age_secs = 600  # a figure older than this counts as unmeasured (default 600)
+seed = 7            # optional: makes the exploration draws reproducible
+```
+
+- **What is ranked.** Only the targets still eligible after [strict classes](#strict-routes), policy,
+  [capabilities](#capabilities) and [health](#endpoint-health): ordering never adds a removed target back,
+  however fast its figure.
+- **The figure.** One smoothed value per target (the newest sample weighs 0.3), kept in memory and
+  updated from the attempts the gateway already times, so nothing is probed. It is the time until the
+  upstream answered: the full time for a buffered call, and until the response began for a streamed one.
+  Only answered attempts update it; a failed attempt does not make a target look fast or slow, because
+  failures are what health tracking is for. A restart starts empty.
+- **Unmeasured targets go first,** in the order written, so a new target is measured before it is judged,
+  and a figure older than `max_age_secs` counts as unmeasured, so a target that was slow ten minutes ago
+  and has been idle since gets another look. A fresh gateway therefore behaves like a passthrough route
+  until it has data.
+- **Exploration.** With probability `explore` a request tries a random eligible target first and the rest
+  follow in speed order; `explore = 0` is pure speed ordering.
+- **See it.** Each decision records `ranking` (`order`, and `reason`: `fastest` or `explore`);
+  `POST /v1/route/explain` shows the `ordering` a request would use now (without exploring) and each target's
+  `current_latency_ms` and `latency_samples`; `GET /v1/stats?group_by=target` and `GET /v1/health` show the
+  same figure; `humpyard_target_latency_seconds` exposes it.
+- **Limits.** The figure is a rough ranking. It mixes request sizes, so a target that mostly gets large
+  prompts looks slower, and speed says nothing about quality: put targets of comparable capability in one
+  pool. See [ADR 0020](adr/0020-latency-ordered-routes-rank-only-what-eligibility-leaves.md).
 
 ## Endpoint health
 

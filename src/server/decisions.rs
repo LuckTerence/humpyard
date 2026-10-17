@@ -104,6 +104,7 @@ fn to_json(d: &Decision) -> Value {
         "excluded_targets": d.excluded_targets,
         "cold_targets": d.cold_targets,
         "incapable_targets": d.incapable_targets,
+        "ranking": d.ranking,
         "request": {
             "stream": d.stream,
             "prompt_tokens_estimate": d.prompt_tokens,

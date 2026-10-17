@@ -21,6 +21,7 @@ use crate::clock::Clock;
 use crate::config::{FallbackOn, Price};
 use crate::error::{fallback_class, stop_fallback};
 use crate::estimate::tokens_for_bytes;
+use crate::latency::Latency;
 use crate::ledger::{Attempt, Entry, Kind, Ledger};
 use crate::metrics::Metrics;
 use crate::pool::{Served, TargetClient};
@@ -37,6 +38,8 @@ pub struct Accounting {
     tracker: Option<Arc<BudgetTracker>>,
     /// Counts every finished call's tokens and cost (ADR 0016).
     metrics: Option<Arc<Metrics>>,
+    /// Observed time to answer per target, for `fastest` routes (ADR 0020).
+    latency: Arc<Latency>,
 }
 
 impl Accounting {
@@ -47,9 +50,23 @@ impl Accounting {
     ) -> Self {
         Self {
             ledger,
+            latency: Arc::new(Latency::new(clock.clone())),
             clock,
             tracker,
             metrics: None,
+        }
+    }
+
+    /// The observed time to answer of every target that has answered.
+    pub fn latency(&self) -> &Arc<Latency> {
+        &self.latency
+    }
+
+    /// An upstream attempt on `target` ended. Only answered attempts say anything about speed (a
+    /// failed one would make a dying target look merely slow; health handles failures).
+    fn observe_attempt(&self, target: &str, outcome: &str, ms: u64) {
+        if outcome == "ok" {
+            self.latency.record(target, ms);
         }
     }
 
@@ -385,6 +402,9 @@ impl RoutedLlmClient for Metered {
         let (mut response, served) = self
             .inner
             .call_detailed(request, &mut |a| {
+                self.ctx
+                    .accounting
+                    .observe_attempt(&self.target, &a.outcome, a.ms);
                 self.ctx.attempts.lock().push(Attempt {
                     target: self.target.clone(),
                     provider: a.provider,

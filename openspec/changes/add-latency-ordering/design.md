@@ -12,10 +12,11 @@ measured on live traffic.
 - **A route type, not a flag on passthrough.** "Order by speed" changes what a route means, and a separate
   type keeps `passthrough` exactly as deterministic as the docs say. `fastest` reads like `passthrough` in
   config and can later share an ordering core with cost-aware ordering.
-- **Time to answer, not time to first token.** The figure is the full time of an answered attempt. Streaming
-  time to first byte would favour fast starters that then crawl; the full time ranks what a client waits for.
-  For streams the attempt time already ends when the stream ends. Time per output token is a later
-  refinement and would need per-request normalisation.
+- **Time until the upstream answered.** The figure is the attempt time the gateway already measures: the full
+  time for a buffered call, and the time until the response began for a streamed one (the attempt returns when
+  the stream starts). Measuring a whole stream would need per-token normalisation and would hold the figure
+  back until the stream ends; time per output token is a later refinement. This was corrected during
+  implementation: the first draft of this design assumed the attempt time ends with the stream.
 - **A smoothed figure per target, in memory.** An exponentially weighted moving average (weight 0.3 on the
   newest sample) keyed by target name, with a sample count. In memory because it is cheap on the request path
   (no ledger query), needs no schema, and a restart only costs a few exploratory requests. Rebuilding it from

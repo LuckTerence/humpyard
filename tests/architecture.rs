@@ -50,6 +50,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("clock", module(Core, &["num"])),
         ("num", module(Core, &[])),
         ("estimate", module(Core, &[])),
+        // Observed time per target and the ordering a `fastest` route derives from it (ADR 0020).
+        ("latency", module(Core, &["clock", "num"])),
         // Reads a retry time out of an upstream error body; pure text parsing (ADR 0018, amended).
         ("retry_after", module(Core, &[])),
         ("health", module(Core, &["clock", "config"])),
@@ -83,14 +85,14 @@ fn rules() -> BTreeMap<&'static str, Module> {
                 &["clock", "config", "error", "health", "retry_after"],
             ),
         ),
-        ("routing", module(Engine, &["config"])),
+        ("routing", module(Engine, &["config", "latency"])),
         (
             "metering",
             module(
                 Engine,
                 &[
-                    "budget", "clock", "config", "error", "estimate", "ledger", "metrics", "pool",
-                    "pricing",
+                    "budget", "clock", "config", "error", "estimate", "latency", "ledger",
+                    "metrics", "pool", "pricing",
                 ],
             ),
         ),

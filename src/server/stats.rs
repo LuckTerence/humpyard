@@ -61,7 +61,13 @@ pub(super) async fn get_stats(
             "group_by": params.get("group_by").map_or("route", String::as_str),
             "window": {"since_ms": query.since_ms, "seconds": (state.clock.now_ms() - query.since_ms) / 1000},
             "truncated": summary.truncated,
-            "data": summary.groups.iter().map(group_json).collect::<Vec<_>>(),
+            "data": summary.groups.iter().map(|g| {
+                let mut row = group_json(g);
+                if params.get("group_by").map(String::as_str) == Some("target") {
+                    add_live_latency(&mut row, &state, &g.group);
+                }
+                row
+            }).collect::<Vec<_>>(),
         }))
         .into_response(),
         Err(error) => GatewayError::Internal(error.to_string()).into_response_for(format),
@@ -141,6 +147,14 @@ pub(super) fn tokens_json(t: &TokenTotals) -> Value {
         "cache_creation": t.cache_creation,
         "output": t.output,
     })
+}
+
+/// A target's current smoothed time to answer, as `fastest` routes see it (in memory, so it can
+/// differ from the percentiles over the window): `null` until the target has answered.
+fn add_live_latency(row: &mut Value, state: &AppState, target: &str) {
+    let figure = state.accounting.latency().figure(target);
+    row["current_latency_ms"] = json!(figure.map(|f| f.ms));
+    row["latency_samples"] = json!(figure.map(|f| f.samples));
 }
 
 fn group_json(g: &GroupStats) -> Value {

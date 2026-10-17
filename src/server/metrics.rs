@@ -64,6 +64,7 @@ fn scraped(state: &AppState, snap: &Snapshot) -> Vec<Family> {
             )],
         ),
         endpoint_state(snap),
+        target_latency(state, snap),
     ];
     if let Some(ledger) = state.accounting.ledger() {
         families.push(metrics::gauge(
@@ -87,6 +88,28 @@ fn scraped(state: &AppState, snap: &Snapshot) -> Vec<Family> {
     }
     families.extend(quota(state, snap));
     families
+}
+
+/// The smoothed time to answer of each configured target that has answered: what `fastest` routes
+/// order by (ADR 0020). Only configured target names are labels.
+fn target_latency(state: &AppState, snap: &Snapshot) -> Family {
+    let mut targets: Vec<_> = snap.config.targets.keys().collect();
+    targets.sort();
+    let samples = targets
+        .into_iter()
+        .filter_map(|target| {
+            let figure = state.accounting.latency().figure(target)?;
+            Some((
+                vec![("target", target.clone())],
+                Value::Float(figure.ms / 1000.0),
+            ))
+        })
+        .collect();
+    metrics::gauge(
+        "target_latency_seconds",
+        "Smoothed time to answer of each target, as latency-ordered routes see it; absent until the target has answered.",
+        samples,
+    )
 }
 
 /// One series per endpoint and state, 1 for the state it is in (the Prometheus idiom for enums).

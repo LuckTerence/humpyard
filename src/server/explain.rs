@@ -98,6 +98,22 @@ impl Hypothetical {
 
 /// The distinct classes of `targets`, in the order they first appear. Targets without a class
 /// are left out: the report says only what is known.
+/// One entry per selector rule: whether it matched and, if not, why.
+fn rules_json(trace: &[crate::select::RuleTrace<'_>]) -> Vec<Value> {
+    trace
+        .iter()
+        .map(|t| {
+            json!({
+                "rule": t.rule,
+                "route": t.route,
+                "matched": t.mismatches.is_empty(),
+                "key_may_use_route": t.permitted,
+                "mismatches": t.mismatches,
+            })
+        })
+        .collect()
+}
+
 /// The planned route: its targets (each with its health), fallback kinds, classes, what a strict
 /// route excluded, and what health skipped or would fail open on (ADR 0017, ADR 0018).
 fn plan_report(
@@ -106,20 +122,38 @@ fn plan_report(
     route: &str,
     planned: &super::Planned,
     recent: &HashMap<String, GroupStats>,
+    latency: &crate::latency::Latency,
 ) {
-    let models = planned.plan.models.models_for(&Category::Any);
+    let mut models: Vec<ModelId> = planned.plan.models.models_for(&Category::Any).to_vec();
     report["outcome"] = json!("ok");
     report["fallback_on"] = fallback_on_report(&planned.plan.fallback);
+    // A `fastest` route tries its targets by speed: show the order a request would use now (without
+    // exploration, which is a per-request draw) and how often it explores.
+    if let Some(route) = snap.routes.get(route) {
+        let names: Vec<String> = models.iter().map(ToString::to_string).collect();
+        if let Some(ranked) = route.speed_order(latency, &names) {
+            models = ranked
+                .order
+                .iter()
+                .map(|n| ModelId::from(n.as_str()))
+                .collect();
+            report["ordering"] = json!({
+                "type": "fastest",
+                "order": ranked.order,
+                "explore": route.explore(),
+            });
+        }
+    }
     report["targets"] = Value::Array(
         models
             .iter()
-            .map(|name| target_report(snap, name, recent))
+            .map(|name| target_report(snap, name, recent, latency))
             .collect(),
     );
     report["incapable_targets"] = json!(planned.incapable);
     report["health_skipped_targets"] = json!(planned.cold_skipped);
     report["health_fail_open"] = json!(planned.fail_open);
-    class_report(report, snap, route, models);
+    class_report(report, snap, route, &models);
 }
 
 /// Which failures hand a request to the next target: `"all"` or the listed kinds.
@@ -224,18 +258,7 @@ fn explain(
     };
     let permitted = |route: &str| caller.is_none_or(|key| key.may_use(route));
     let trace = snap.selectors.trace(&facts, permitted);
-    let rules: Vec<Value> = trace
-        .iter()
-        .map(|t| {
-            json!({
-                "rule": t.rule,
-                "route": t.route,
-                "matched": t.mismatches.is_empty(),
-                "key_may_use_route": t.permitted,
-                "mismatches": t.mismatches,
-            })
-        })
-        .collect();
+    let rules = rules_json(&trace);
 
     // Resolve the route exactly as a real request does.
     let (route_name, rule, source) = match super::select_route(
@@ -282,8 +305,28 @@ fn explain(
     };
     report["budget"] = json!(budget.map(budget_name));
     let route = snap.routes.get(&route_name);
-    match route.map(|r| plan_route(snap, r, &route_name, caller, budget, &info, &features)) {
-        Some(Ok(planned)) => plan_report(&mut report, snap, &route_name, &planned, recent),
+    match route.map(|r| {
+        plan_route(
+            snap,
+            r,
+            &route_name,
+            &super::PlanInput {
+                caller,
+                budget,
+                info: &info,
+                features: &features,
+                latency: None,
+            },
+        )
+    }) {
+        Some(Ok(planned)) => plan_report(
+            &mut report,
+            snap,
+            &route_name,
+            &planned,
+            recent,
+            state.accounting.latency(),
+        ),
         Some(Err(failure)) => {
             report["outcome"] = json!(failure.error.outcome());
             report["message"] = json!(failure.error.to_string());
@@ -296,7 +339,13 @@ fn explain(
     report
 }
 
-fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, GroupStats>) -> Value {
+fn target_report(
+    snap: &Snapshot,
+    name: &ModelId,
+    recent: &HashMap<String, GroupStats>,
+    latency: &crate::latency::Latency,
+) -> Value {
+    let figure = latency.figure(name.as_str());
     let endpoints: Vec<Value> = snap
         .targets
         .get(name)
@@ -328,6 +377,8 @@ fn target_report(snap: &Snapshot, name: &ModelId, recent: &HashMap<String, Group
         "target": name.to_string(),
         "class": snap.config.target_classes.get(name.as_str()),
         "cold": super::is_cold(snap, name.as_str()),
+        "current_latency_ms": figure.map(|f| f.ms),
+        "latency_samples": figure.map(|f| f.samples),
         "endpoints": endpoints,
         "recent": recent,
     })

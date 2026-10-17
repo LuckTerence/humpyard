@@ -503,6 +503,26 @@ pub(super) fn validate_route(id: &str, route: &RouteSpec) -> Result<(), ConfigEr
     };
     match route {
         RouteSpec::Passthrough { targets, .. } => non_empty("targets", targets),
+        RouteSpec::Fastest {
+            targets,
+            explore,
+            min_samples,
+            max_age_secs,
+            ..
+        } => {
+            non_empty("targets", targets)?;
+            if !(0.0..=1.0).contains(explore) {
+                return Err(invalid(format!(
+                    "route `{id}`: `explore` must be between 0 and 1"
+                )));
+            }
+            if *min_samples == 0 || *max_age_secs == 0 {
+                return Err(invalid(format!(
+                    "route `{id}`: `min_samples` and `max_age_secs` must be at least 1"
+                )));
+            }
+            Ok(())
+        }
         RouteSpec::Random {
             targets, weights, ..
         } => {
