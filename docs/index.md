@@ -35,6 +35,7 @@ traffic** (Claude Code, Codex and the like), and it explains and measures what i
 | understand failover, selectors, health | [Routing](routing.md) |
 | set budgets and read the usage and decision log | [Keys, budgets and the ledger](budgets.md) |
 | move from LiteLLM | [Migrating from LiteLLM](migrating-from-litellm.md) |
+| move from ModelRelay | [Moving from ModelRelay](migrating-from-modelrelay.md) |
 | see the design | [Architecture](architecture.md) and the [decision records](adr/README.md) |
 | see what is done and what is next | [Roadmap](roadmap.md) |
 

@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 use humpyard::config::Config;
+use humpyard::migrate;
 use humpyard::prices;
 use humpyard::server;
 
@@ -31,6 +32,37 @@ enum Command {
         #[command(subcommand)]
         command: PricesCommand,
     },
+    #[allow(clippy::doc_markdown)] // "ModelRelay" is a product name (this is also the --help text)
+    /// Print a humpyard config fragment for a ModelRelay setup: providers, one target per usable model
+    /// (its tags as strengths, its context window), and `auto-fastest` / `tag:<strength>` pool routes.
+    /// Reads ModelRelay's admin API (or two saved responses); never copies a key and never edits a file.
+    MigrateModelrelay(MigrateArgs),
+}
+
+#[derive(clap::Args)]
+#[allow(clippy::doc_markdown)] // "ModelRelay" is a product name (these are also the --help text)
+struct MigrateArgs {
+    /// ModelRelay's base URL (https, or http on this machine), read through its admin API.
+    #[arg(long, requires = "token_env", conflicts_with_all = ["config", "models"])]
+    url: Option<String>,
+    /// The environment variable that holds ModelRelay's admin token (never pass the token itself).
+    #[arg(long)]
+    token_env: Option<String>,
+    /// A saved `/api/config` response, instead of --url.
+    #[arg(long, requires = "models")]
+    config: Option<PathBuf>,
+    /// A saved `/api/models` response, instead of --url.
+    #[arg(long, requires = "config")]
+    models: Option<PathBuf>,
+    /// The `class` given to every generated target.
+    #[arg(long, default_value = "public")]
+    class: String,
+    /// Also generate `+min_ctx:N` routes for this minimum context window (repeatable).
+    #[arg(long = "min-ctx")]
+    min_ctx: Vec<u64>,
+    /// Write the fragment here instead of stdout; refused if the file exists.
+    #[arg(long)]
+    out: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -130,6 +162,89 @@ async fn load_prices(args: &PriceArgs) -> Result<Vec<prices::Report>, prices::Pr
             })
         })
         .collect()
+}
+
+/// `migrate-modelrelay`: read the two `ModelRelay` responses, print the fragment, report on stderr.
+async fn migrate_command(args: MigrateArgs) -> Result<(), String> {
+    let (config_text, models_text) = match (&args.url, &args.config, &args.models) {
+        (Some(url), _, _) => {
+            let token = match &args.token_env {
+                Some(name) => Some(
+                    std::env::var(name)
+                        .ok()
+                        .filter(|t| !t.is_empty())
+                        .ok_or_else(|| format!("`{name}` is not set"))?,
+                ),
+                None => None,
+            };
+            (
+                migrate::fetch(url, "/api/config", token.as_deref())
+                    .await
+                    .map_err(|e| e.to_string())?,
+                migrate::fetch(url, "/api/models", token.as_deref())
+                    .await
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+        (None, Some(config), Some(models)) => (
+            std::fs::read_to_string(config)
+                .map_err(|e| format!("cannot read {}: {e}", config.display()))?,
+            std::fs::read_to_string(models)
+                .map_err(|e| format!("cannot read {}: {e}", models.display()))?,
+        ),
+        _ => return Err("give --url (with --token-env) or --config and --models".into()),
+    };
+    let providers = migrate::parse_config(&config_text).map_err(|e| e.to_string())?;
+    let models = migrate::parse_models(&models_text).map_err(|e| e.to_string())?;
+    let migration = migrate::migrate(
+        &providers,
+        &models,
+        &migrate::Options {
+            class: args.class,
+            min_ctx: args.min_ctx,
+        },
+    );
+    migrate::self_check(&migration.fragment)
+        .map_err(|e| format!("the generated fragment does not load, so it was not written: {e}"))?;
+    match &args.out {
+        Some(path) => {
+            use std::io::Write as _;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .map_err(|e| {
+                    format!(
+                        "cannot create {}: {e} (an existing file is never overwritten)",
+                        path.display()
+                    )
+                })?;
+            file.write_all(migration.fragment.as_bytes())
+                .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+        }
+        None => print!("{}", migration.fragment),
+    }
+    let r = &migration.report;
+    eprintln!(
+        "\nmigrated {} providers, {} targets, {} routes; the fragment loads.",
+        r.providers, r.targets, r.routes
+    );
+    if !r.skipped.is_empty() {
+        eprintln!("not carried over:");
+        for line in &r.skipped {
+            eprintln!("  - {line}");
+        }
+    }
+    if !r.todo.is_empty() {
+        eprintln!("to do by hand:");
+        for line in &r.todo {
+            eprintln!("  - {line}");
+        }
+    }
+    eprintln!(
+        "set each api_key_env variable in the gateway's environment, then merge the fragment into your config."
+    );
+    Ok(())
 }
 
 async fn prices_command(command: PricesCommand) -> ExitCode {
@@ -240,6 +355,15 @@ async fn main() -> ExitCode {
     if let Command::Prices { command } = command {
         return prices_command(command).await;
     }
+    if let Command::MigrateModelrelay(args) = command {
+        return match migrate_command(args).await {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(message) => {
+                eprintln!("error: {message}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match run(command).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
@@ -263,7 +387,7 @@ async fn run(command: Command) -> Result<(), String> {
             println!("Add to your config:\n\n[keys.{id}]\nsha256 = \"{hash}\"");
             Ok(())
         }
-        Command::Prices { .. } => Ok(()), // handled in `main`, where it chooses its exit code
+        Command::Prices { .. } | Command::MigrateModelrelay(_) => Ok(()), // handled in `main`
         Command::Serve { config: path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             let listener = tokio::net::TcpListener::bind(config.listen)

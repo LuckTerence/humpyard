@@ -1,0 +1,12 @@
+[
+  {"key":"nvidia","name":"NIM","enabled":true,"hasKey":true,"hasMultipleKeys":false,
+   "apiKeyPool":[{"index":0,"masked":"nvap...wxyz"}],"baseUrl":null,"modelId":null,"maxTurns":5},
+  {"key":"groq","name":"Groq","enabled":true,"hasKey":true,"hasMultipleKeys":false,
+   "apiKeyPool":[{"index":0,"masked":"gsk_...abcd"}],"baseUrl":null,"modelId":null,"maxTurns":5},
+  {"key":"cerebras","name":"Cerebras","enabled":true,"hasKey":true,"hasMultipleKeys":true,
+   "apiKeyPool":[{"index":0,"masked":"csk-...1111"},{"index":1,"masked":"csk-...2222"}],"maxTurns":5},
+  {"key":"openrouter","name":"OpenRouter","enabled":true,"hasKey":false,"apiKeyPool":[]},
+  {"key":"codestral","name":"Codestral","enabled":false,"hasKey":true,"apiKeyPool":[{"index":0,"masked":"abcd...efgh"}]},
+  {"key":"kiro","name":"Kiro","enabled":true,"hasKey":true,"apiKeyPool":[]},
+  {"key":"ollama","name":"Ollama","enabled":true,"hasKey":false,"baseUrl":"http://ollama.example.net:11434","apiKeyPool":[]}
+]

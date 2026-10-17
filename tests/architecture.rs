@@ -74,6 +74,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("pricing", module(Engine, &["config", "num"])),
         // Reads price sources for the `prices` command only; see the serving-path test below.
         ("prices", module(Core, &["config"])),
+        // Reads a ModelRelay setup for the `migrate-modelrelay` command only; see the serving-path test.
+        ("migrate", module(Core, &["config"])),
         // Polls provider usage while serving; advisory and fail-open (ADR 0015).
         ("quota", module(Core, &["clock", "config"])),
         // Operational metrics: one registry, bounded labels (ADR 0016).
@@ -316,6 +318,28 @@ fn only_the_prices_command_uses_the_price_source_module() {
     assert!(
         offenders.is_empty(),
         "these files use the price-source module, which only `humpyard prices` may (ADR 0014): {offenders:?}"
+    );
+}
+
+/// Only the `migrate-modelrelay` command (`main`) may use the module that reads a `ModelRelay` setup, so
+/// `serve` can never fetch one.
+#[test]
+fn only_the_migrate_command_uses_the_migration_module() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let module = module_of(path.strip_prefix(&src).unwrap());
+        if matches!(module.as_str(), "migrate" | "main" | "lib") {
+            continue;
+        }
+        let code = production_code(&fs::read_to_string(&path).unwrap());
+        if code.contains("migrate::") || code.contains("humpyard::migrate") {
+            offenders.push(path.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these files use the migration module, which only `humpyard migrate-modelrelay` may: {offenders:?}"
     );
 }
 

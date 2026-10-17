@@ -27,3 +27,20 @@ endpoints, bans, tags and pinning carry over.
   ([0004](0004-no-plaintext-secrets.md)).
 - Users run one command to switch; the fork can keep evolving independently.
 - Not yet built: the command and the bundled catalog are planned future work.
+
+## Amended 2026-10-16: read the admin API, not the file, and no bundled catalog
+
+The decision above assumed the file plus a catalog ported once as bundled data. Building the command
+showed a better source. The file holds only credentials, toggles, custom endpoints, bans and tags, so
+reading it alone cannot say which models exist; and a port of the catalog is a table of another project's
+data that goes stale. ModelRelay's admin API already serves exactly what a migration needs, from the
+instance the operator actually runs: `/api/config` (which providers are enabled, whether each has a key, and
+custom endpoints) and `/api/models` (each model with its provider, context window, tags, and whether it is
+banned), and its keys are masked there. So `humpyard migrate-modelrelay` reads those two responses (live, or
+saved to files for offline use), never calls the endpoint that returns key values, and needs no bundled
+catalog. The rest of the decision stands: no runtime reader, a re-runnable command, keys become
+`api_key_env` references, and plaintext keys are never copied. The risk this trades for the one above is
+tying the command to the shape of two API responses; it ignores unknown fields, reports a response it cannot
+read, and the guide names the ModelRelay version it was checked against (1.28). A bundled free-model catalog
+(step 4 of the roadmap) remains possible later for operators who do not run ModelRelay.
+

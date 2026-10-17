@@ -11,6 +11,7 @@ pub mod latency;
 pub mod ledger;
 pub mod metering;
 pub mod metrics;
+pub mod migrate;
 pub mod num;
 pub mod policy;
 pub mod pool;
