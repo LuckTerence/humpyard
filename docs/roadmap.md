@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-14. Latest release: 0.9.4. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-14. Latest release: 0.9.5. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -29,6 +29,7 @@ Last updated: 2026-10-14. Latest release: 0.9.4. Community: [Discord](https://di
 | 0.9.2 | 2026-10-17 | Free pools that survive and renew themselves: a dead or removed model (404, 401, 403, or a 400 naming a missing model) now counts against its endpoint and, on `fastest` and pool routes, moves the request to the next target (before, a dead first target failed every request of a `fastest` pool); and model discovery, `humpyard models check` and `models sync`, which keep opted-in free providers current from a generated file `serve` reads and never fetches, off until switched on globally and per provider (see [Keeping pools current](discovery.md)). No schema change |
 | 0.9.3 | 2026-10-17 | Quality-aware ordering: a target can declare `quality` (0 to 1), a pool can set `min_quality`, and a `fastest` route can set `quality_weight` to blend declared quality with observed speed (default 0, which keeps the pure speed order); `explain` shows qualities and scores; `migrate-modelrelay` declares ModelRelay's measured scores as `quality` and keeps its estimates as comments (`--estimated-quality` to include them). No schema change |
 | 0.9.4 | 2026-10-17 | A guarded tail for pool routes: `then = { targets, on }` on a `fastest` pool route names fixed targets (for example a paid one) reached only when a listed failure class (default `overflow`) ends the pool's last member, so a prompt too big for every free model is still served while free models keep failing over among themselves; cold members are retried before the tail is used; `explain` shows the tail. `migrate-modelrelay` gains `--rename FROM=TO` and `--quality-weight W`. [ADR 0024](adr/0024-a-pool-route-can-end-in-a-guarded-tail.md). |
+| 0.9.5 | 2026-10-17 | A pool member that answers `410 Gone` (a model removed for good) or `402 Payment Required` (a key with no credit left) is now treated as a dead endpoint, like a 404 or 401: it counts against its health, the request moves on to the next member, and the real status is restored if nobody answers. Found by putting real requests through a live free pool, where one removed model had failed every request. A test pins the exact set of client errors that move a pool on. [ADR 0023](adr/0023-answers-that-describe-the-endpoint-make-it-unavailable.md). |
 
 ## Building now
 
