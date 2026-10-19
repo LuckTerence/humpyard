@@ -89,7 +89,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
 1. ~~A `/metrics` endpoint (Prometheus)~~ Shipped in 0.8.0; it is built on one registry, so the read-only status page (item 5) is a thin view over it.
 2. ~~Health-driven target eligibility~~ Shipped in 0.8.2 (ADR 0018): a cold target is skipped only when an alternative remains.
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
-4. A versioned admin API with its own credential, exposing the effective configuration with provenance and its fingerprint, and expiring runtime overrides ([ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md)). Database-managed keys are deferred.
+4. A versioned admin API with its own credential, exposing the effective configuration with provenance and its fingerprint, and expiring runtime overrides ([ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md)). Database-managed keys follow, bounded by profiles defined in the file (they can narrow a profile, never exceed it).
 5. A read-only status page served by the binary, built on the same API.
 6. `migrate-modelrelay`: a command and bundled catalog to bring a ModelRelay setup across. This is the last step of [Replacing ModelRelay](#replacing-modelrelay), which lists what must exist first.
 

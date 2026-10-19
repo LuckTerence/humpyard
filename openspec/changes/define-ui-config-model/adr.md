@@ -8,7 +8,8 @@ changes the running gateway except reviewed configuration, an explicit separate 
 runtime inputs that fail safe.
 
 The architecture document's "Direction: operating humpyard" says database-managed keys sit beside config keys
-"so config-as-code and runtime management can coexist". That is the one point this change amends.
+"so config-as-code and runtime management can coexist". This change keeps that goal but bounds it: database keys
+are credentials that can only narrow a profile defined in the file.
 
 ## Outcome
 

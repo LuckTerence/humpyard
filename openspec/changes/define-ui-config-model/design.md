@@ -37,9 +37,28 @@ why the gateway behaves as it does and an editor knows what it may touch.
 
 ## Keys
 
-Config-defined keys are read-only to any UI. Database-managed keys are the one feature in the earlier direction
-that would give a second source of truth for who may do what; they are deferred. If a need arises they must live
-in a visibly separate namespace, show their origin, and be unable to grant more than the config allows.
+A key is a credential with a lifecycle, not a structural setting: it is created, rotated, expired and revoked
+constantly, a leaked one must die immediately (not after a review and an apply), and git can only ever see its
+hash. What must not drift is the *authority* attached to it.
+
+- **The file defines key profiles** (for example `agent`, `trial`): allowed routes, allowed classes, budget
+  ceilings (`daily_usd`, `monthly_usd`, `daily_tokens`, `monthly_tokens`, the `over_budget` mode), a maximum
+  lifetime, and `max_active_keys`.
+- **The database owns the credential and its lifecycle**: the hash, a label, the profile, an expiry, last use,
+  revoked-or-not, and optional *narrowing*. A key's effective limits are `min(key, profile)` for every limit; its
+  routes are a subset of the profile's; its expiry is no later than the profile allows; `block` may replace
+  `free_only` but never the reverse. A database key can never exceed its profile.
+- **Every database key has a profile and an expiry** (a default applies). A key whose profile can reach paid
+  routes must have a budget.
+- **`max_active_keys` bounds the total.** The ceiling bounds each key, not their sum, so a profile caps how many
+  may be active. Minting needs the admin credential, which is the real boundary; an aggregate budget across a
+  profile's keys would need shared counters and is deferred unless keys are shared with others.
+- **The secret is shown once**, when the key is created; afterwards only the hash and metadata exist.
+- **Revocation is immediate**, takes effect without a reload, and writes an audit row.
+- **Config-defined keys stay read-only** to any UI, for service accounts, and are listed with their origin
+  beside database keys.
+- **Sharing gate.** Humpyard has no per-key rate limit or concurrency cap. Before keys are given to people other
+  than the operator, profiles need one; until then database keys are for the operator's own agents and tools.
 
 ## Enforcement
 

@@ -60,3 +60,39 @@ No interface to the gateway SHALL persist configuration anywhere except the conf
 #### Scenario: Deleting interface state
 - **WHEN** all interface storage is deleted
 - **THEN** the effective configuration of the gateway is unchanged
+
+### Requirement: A database key names a profile and never exceeds it
+Every key stored in the database SHALL name a profile defined in the configuration file and SHALL have an expiry no later than the profile's maximum lifetime. Its effective limits, routes and classes SHALL be those of its profile or stricter, and it SHALL NOT exceed its profile in any limit, route, class or expiry.
+
+#### Scenario: A key cannot exceed its profile
+- **WHEN** a database key is created with a daily budget higher than its profile's ceiling, or a route the profile does not allow
+- **THEN** it is refused
+
+#### Scenario: A key can narrow its profile
+- **WHEN** a database key sets a lower budget or a subset of the profile's routes
+- **THEN** the lower value applies to that key and the profile's other limits are unchanged
+
+#### Scenario: Strict classes still hold
+- **WHEN** a database key's profile allows only the private class
+- **THEN** that key cannot reach a public or paid target on any route
+
+### Requirement: A profile caps its active keys
+A profile SHALL be able to cap the number of active database keys that use it, and creating a key beyond the cap SHALL be refused.
+
+#### Scenario: A profile caps its keys
+- **WHEN** a profile allows 5 active keys and a sixth is requested
+- **THEN** the request is refused until one is revoked or expires
+
+### Requirement: Keys defined in the configuration are read-only to any interface
+Keys defined in the configuration file SHALL be listed with their origin beside database keys, and SHALL NOT be editable or revocable through any interface.
+
+#### Scenario: Keys are listed with their origin
+- **WHEN** the keys are listed
+- **THEN** each is labelled as defined in the configuration or in the database, and a configuration key cannot be edited or revoked through the interface
+
+### Requirement: A database key's secret is shown once and revocation is immediate
+A database key's secret SHALL be shown exactly once, at creation; only its hash and metadata SHALL be kept. Revoking a key SHALL take effect for the next request without a configuration reload and SHALL be recorded as an audit row.
+
+#### Scenario: Revoking a leaked key
+- **WHEN** a database key is revoked
+- **THEN** its next request is refused with the authentication error, and an audit row names the key and when it was revoked

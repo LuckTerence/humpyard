@@ -59,9 +59,9 @@ and the SQLite ledger. The planned order for the operator-facing surface is API 
 
 1. A versioned, documented admin API (OpenAPI generated from the code) with its own admin
    credential and scopes, so a client key can never mint keys. Config-defined keys stay read-only
-   in the API. Database-managed keys are deferred, because a second source of truth for who may do
-   what is the drift [ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md) rules out; the API
-   exposes the effective configuration with the source of each value and its fingerprint, and
+   in the API. Database-managed keys are credentials bounded by profiles defined in the file: they can
+   narrow a profile, never exceed it, always expire, and are revoked immediately
+   ([ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md)); the API exposes the effective configuration with the source of each value and its fingerprint, and
    runtime actions are expiring overrides, never configuration.
 2. A `/metrics` endpoint, so existing Prometheus and Grafana setups need no custom UI.
 3. A read-only status page served by the binary, built only on the same API.

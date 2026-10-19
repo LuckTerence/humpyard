@@ -22,8 +22,10 @@ This change is a design and a set of requirements; it adds no UI. It decides:
   already exist, always carry an expiry, are visible on decisions, `explain` and in metrics, and are audited.
 - **Effective configuration with provenance**, and an exposed config fingerprint, so drift between the repository
   and the running gateway can be detected with or without a UI.
-- **Database-managed keys stay out** until a real need appears; the architecture direction that allowed them
-  beside config keys is amended.
+- **Database-managed keys are credentials, not configuration.** The file defines key *profiles* (routes,
+  classes, budget ceilings, a cap on active keys); the database owns the credential and its lifecycle (create,
+  rotate, expire, revoke), and a database key can only narrow its profile, never exceed it. Config-defined keys
+  stay read-only to any UI. This replaces the earlier direction, which let database keys carry free-form policy.
 - One-click apply (opening a change in the operator's repository) is **deferred**, not designed in.
 
 ## Capabilities

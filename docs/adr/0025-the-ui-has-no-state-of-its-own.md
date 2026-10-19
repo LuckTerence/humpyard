@@ -29,9 +29,15 @@ The UI holds no state of its own. Three kinds of change, each with one home:
 
 The gateway exposes its effective configuration with the source of every value (`file`, `generated`,
 `override`) and its configuration fingerprint, so drift between the repository and the running gateway can be
-detected whether or not a UI exists. Database-managed keys are deferred: they are the one feature that would give
-a second source of truth for authority, so the earlier architecture direction that allowed them beside config keys
-is amended.
+detected whether or not a UI exists.
+
+**Keys are credentials, not configuration**, so they may be managed in the database, but their authority is not.
+The file defines key profiles (routes, classes, budget ceilings, a maximum lifetime, a cap on active keys). A
+database key names a profile and may only narrow it: its limits are the lesser of its own and the profile's, its
+routes a subset, its expiry no later. Every database key expires, a key whose profile can reach paid routes has a
+budget, the secret is shown once, and revocation is immediate and audited. Config-defined keys stay read-only to
+any UI. Until a per-profile rate limit or concurrency cap exists, database keys are for the operator's own agents
+and tools, not for other people.
 
 ## Alternatives considered
 
@@ -42,6 +48,11 @@ is amended.
 - **One-click apply through the operator's repository** (open a change from the UI). Useful, and built on the
   patch flow, but it needs a hook into a private system the public project cannot know about. Deferred until a
   real need appears.
+- **Defer database keys entirely.** Too blunt: a leaked key has to be revocable immediately, which a file that
+  waits for a review and a deploy cannot do. Keys differ from other configuration in how often they change and in
+  who sees their secret.
+- **Database keys with free-form policy.** A second source of truth for who may do what: a row could grant a
+  route or class the file never intended. Rejected in favour of profiles that bound them.
 - **No runtime actions at all.** Slows the response to a broken provider to a full review cycle. Expiring
   overrides give a fast, safe lever that cannot become permanent configuration.
 
