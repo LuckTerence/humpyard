@@ -89,7 +89,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
 1. ~~A `/metrics` endpoint (Prometheus)~~ Shipped in 0.8.0; it is built on one registry, so the read-only status page (item 5) is a thin view over it.
 2. ~~Health-driven target eligibility~~ Shipped in 0.8.2 (ADR 0018): a cold target is skipped only when an alternative remains.
 3. A native Anthropic upstream, for providers that speak Anthropic Messages directly.
-4. A versioned admin API with its own credential, and database-managed keys beside config-defined ones.
+4. A versioned admin API with its own credential, exposing the effective configuration with provenance and its fingerprint, and expiring runtime overrides ([ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md)). Database-managed keys follow, bounded by profiles defined in the file (they can narrow a profile, never exceed it).
 5. A read-only status page served by the binary, built on the same API.
 6. `migrate-modelrelay`: a command and bundled catalog to bring a ModelRelay setup across. This is the last step of [Replacing ModelRelay](#replacing-modelrelay), which lists what must exist first.
 
@@ -126,7 +126,7 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   pricing code of the session analytics and needs its own spec.
 - **A classifier-backed rule action**, if the decision log shows the catch-all route is too coarse.
 - **Quota per model**, if a provider publishes it; adapters for other providers' usage endpoints.
-- **A fuller admin GUI**, as an optional separate client of the admin API.
+- **A fuller admin GUI**, as an optional separate client of the admin API. It produces patches to the config file (a direct write only for a writable file, by opt-in) and never keeps configuration of its own. **One-click apply** (opening a change in the operator's repository through a hook) is deferred until a real need appears.
 
 Nothing here is a promise of a date. Items move up when something real needs them, and move out
 when the measurements say they are not needed.
