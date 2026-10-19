@@ -9,6 +9,10 @@ not zero"). Operators who hand a key to an agent or to another person want a sec
 not depend on totals: **no single request may cost more than X**. This is what people ask of a gateway when they
 share access, and it is independent of whether a daily budget is configured.
 
+**Status: designed, deliberately not built.** The operator's own paid provider (OpenCode Go) is a flat-rate plan whose
+limit is a quota, so no dollar control applies to it. This is kept ready for the first pay-as-you-go provider, or
+for keys shared with others; see the roadmap.
+
 ## What Changes
 
 - A key MAY set `max_request_usd`, a ceiling on what one request may cost.
