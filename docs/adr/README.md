@@ -38,6 +38,7 @@ numbers are monotonic and never reused. Start from [template.md](template.md).
 | [0022](0022-free-pool-membership-may-be-updated-on-a-schedule-without-review.md) | Free-pool membership may be updated on a schedule without review |
 | [0023](0023-answers-that-describe-the-endpoint-make-it-unavailable.md) | Answers that describe the endpoint make it unavailable |
 | [0024](0024-a-pool-route-can-end-in-a-guarded-tail.md) | A pool route can end in a guarded tail |
+| [0025](0025-the-ui-has-no-state-of-its-own.md) | The UI has no state of its own |
 
 How decisions relate to enforcement: invariants that must hold mechanically are listed in
 [../invariants.md](../invariants.md) and checked by tests and CI.

@@ -59,13 +59,19 @@ and the SQLite ledger. The planned order for the operator-facing surface is API 
 
 1. A versioned, documented admin API (OpenAPI generated from the code) with its own admin
    credential and scopes, so a client key can never mint keys. Config-defined keys stay read-only
-   in the API; database-managed keys are editable, so config-as-code and runtime management can
-   coexist.
+   in the API. Database-managed keys are deferred, because a second source of truth for who may do
+   what is the drift [ADR 0025](adr/0025-the-ui-has-no-state-of-its-own.md) rules out; the API
+   exposes the effective configuration with the source of each value and its fingerprint, and
+   runtime actions are expiring overrides, never configuration.
 2. A `/metrics` endpoint, so existing Prometheus and Grafana setups need no custom UI.
 3. A read-only status page served by the binary, built only on the same API.
 4. A fuller admin GUI is deliberately left open for later, for people who want one. It should be an
    optional, separate component that is just another client of the admin API, so the core stays a
    single small binary. Nothing above should be built in a way that rules it out.
+
+The rule for any interface is that it keeps no configuration state of its own: structural changes
+are patches to the configuration file, operational actions are expiring overrides, and generated
+data stays in its own file (ADR 0025). That is what keeps a UI from drifting away from the config.
 
 ## Current: request flow (implemented)
 
