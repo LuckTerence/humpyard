@@ -44,7 +44,7 @@ Any interface for changing providers, targets, routes, key policy or prices SHAL
 - **THEN** no patch is offered and the loader's reason is returned
 
 ### Requirement: A direct write needs an opt-in and a current fingerprint
-The configuration file MAY be written by an interface only when it is writable and the operator has opted in, atomically, and only if the fingerprint the editor last read is still the file's.
+An interface SHALL NOT write the configuration file unless the file is writable and the operator has opted in; a permitted write SHALL be atomic and SHALL be refused unless the fingerprint the editor last read is still the file's.
 
 #### Scenario: Writable but not opted in
 - **WHEN** the file is writable and the opt-in is absent
