@@ -126,6 +126,16 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   pricing code of the session analytics and needs its own spec.
 - **A classifier-backed rule action**, if the decision log shows the catch-all route is too coarse.
 - **Quota per model**, if a provider publishes it; adapters for other providers' usage endpoints.
+- **Ledger scale items**, all low priority and each its own spec-first change, started only on the trigger
+  named (measurements and method in [Performance and scale](performance.md)):
+  - *Retention or archival for the `usage` table*, which is never pruned. Trigger: a ledger past roughly
+    a million usage rows (about 2,700 days at the author's rate), or keys shared with other people.
+  - *Make `spend_since` seek on the timestamp* (an index or a different query), so a restart is quick on a large
+    ledger. Trigger: start-up budget hydration taking more than a second or two.
+  - *Let the decisions lookup by request id use its index* (the optional-filter shape defeats it). Trigger: that
+    lookup being used on a large ledger, for example from a UI.
+  - *Do not block writes while a large prune runs.* Trigger: a prune after a long gap, or a much shorter
+    `decision_retention_days`, stalling the writer for noticeable time.
 - **A fuller admin GUI**, as an optional separate client of the admin API. It produces patches to the config file (a direct write only for a writable file, by opt-in) and never keeps configuration of its own. **One-click apply** (opening a change in the operator's repository through a hook) is deferred until a real need appears.
 
 Nothing here is a promise of a date. Items move up when something real needs them, and move out

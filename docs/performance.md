@@ -114,7 +114,8 @@ bodies, memory use under load and behavior over a long soak were not measured.
 
 ## Open findings
 
-These are recorded here, not fixed. Each would be its own change with its own spec.
+These are recorded here, not fixed, and all are low priority. Each would be its own change with its own spec,
+started on the trigger listed in the [roadmap](roadmap.md#later-and-only-on-a-measured-trigger).
 
 1. **`usage` is never pruned.** Whether it needs a retention setting or an archival command depends on the
    deployment; for a single operator it is not urgent.
