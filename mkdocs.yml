@@ -86,6 +86,7 @@ nav:
       - Metrics and alerts: metrics.md
       - Providers: providers.md
       - Keeping pools current: discovery.md
+      - Performance and scale: performance.md
       - Migrating from LiteLLM: migrating-from-litellm.md
       - Moving from ModelRelay: migrating-from-modelrelay.md
       - Example configs: examples.md

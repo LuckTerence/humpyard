@@ -134,6 +134,10 @@ delaying a response, flushed on shutdown), and pruned after `decision_retention_
 default 90, `0` keeps everything; changing it needs a restart). An older database is upgraded in
 place when the gateway first opens it.
 
+Only decisions (and provider quota samples) are pruned. The `usage` table, the spend history that budgets are
+computed from, is kept forever. [Performance and scale](performance.md) lists the retention of each table and how
+the ledger behaves at one million rows.
+
 Read it with `GET /v1/decisions` (a key sees only its **own** decisions, newest first; an open
 gateway sees all; there is no admin view yet). Filters: `route`, `rule`, `outcome`, `request_id`,
 `since_ms` (unix milliseconds) and `limit` (default 50, at most 500):
