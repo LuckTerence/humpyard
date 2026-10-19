@@ -2,7 +2,7 @@
 # Used by the README quick start:
 #   export GROQ_API_KEY=...        # the only key it needs
 #   docker run -d -p 127.0.0.1:8080:8080 -e GROQ_API_KEY \
-#     -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.8.2
+#     -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:<version>   (the tag in the README)
 #
 # `0.0.0.0` is for inside a container, where the default loopback address is unreachable from the
 # host; the docker command above publishes the port on 127.0.0.1 only, so the gateway is not exposed
@@ -16,4 +16,4 @@ base_url = "https://api.groq.com/openai/v1"
 api_key_env = "GROQ_API_KEY"
 
 [targets.fast]
-endpoints = [{ provider = "groq", model = "llama-3.3-70b-versatile" }]
+endpoints = [{ provider = "groq", model = "openai/gpt-oss-120b" }]

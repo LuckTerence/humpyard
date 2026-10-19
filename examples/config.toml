@@ -19,7 +19,7 @@ api_key_env = "OPENROUTER_API_KEY"
 # Targets: a named model served by an ordered list of endpoints (failover order).
 [targets.fast]
 endpoints = [
-  { provider = "groq", model = "llama-3.3-70b-versatile" },
+  { provider = "groq", model = "openai/gpt-oss-120b" },
   { provider = "openrouter", model = "meta-llama/llama-3.3-70b-instruct" },
 ]
 
