@@ -211,7 +211,7 @@ endpoint. The switch report gives:
   not causal**: sessions that switch are probably longer and harder.
 
 Use it to decide whether pinning sessions to a target would be worth building: if `extra_share` is a
-small fraction of spend, it is not.
+small fraction of spend, it is not. One measurement is recorded in the [roadmap](roadmap.md#considered-not-planned): it was not worth building.
 
 Not recorded: why a `stage_router` or classifier route picked a tier (the engine does not expose
 it; you see the target that served), and attempts that fail after a stream has begun.

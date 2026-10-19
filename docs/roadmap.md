@@ -142,5 +142,19 @@ In this order, API first. See [Direction: operating humpyard](architecture.md#di
   Trigger: the first pay-as-you-go provider is added, or keys are shared with other people.
 - **A fuller admin GUI**, as an optional separate client of the admin API. It produces patches to the config file (a direct write only for a writable file, by opt-in) and never keeps configuration of its own. **One-click apply** (opening a change in the operator's repository through a hook) is deferred until a real need appears.
 
+## Considered, not planned
+
+- **Pinning a session to one target ("sticky sessions").** Measured on the author's gateway on 2026-10-18 with
+  `/v1/stats/switches`: over 7 days, 34 mid-session switches across 6 of 11 sessions that carried a session id
+  cost an estimated $0.09 of $0.90 total spend (about 10 percent; 18 percent over the last 24 hours, of $0.20). That
+  is a large share of a very small number, about five dollars a year at that rate, so it does not pay for the
+  complexity. Every switch was between paid OpenCode models on routes that are `random` on purpose, to spread
+  load because that plan's quotas are per model; pinning would concentrate a session on one model's quota and work
+  against it. Sessions that stayed on one model all cost nothing, so the free pools were not bouncing a session
+  between models either. The sample is small and only 33 to 40 percent of answered calls carried a session id, so
+  this is descriptive, not proof. Revisit if paid, cache-heavy traffic grows enough that `extra_share` is a
+  meaningful number of dollars, or if sessions on a free `fastest` pool are seen switching models often (the
+  `by_pair` list in the same endpoint shows it). The method is in [Keys, usage and budgets](budgets.md).
+
 Nothing here is a promise of a date. Items move up when something real needs them, and move out
 when the measurements say they are not needed.
