@@ -83,6 +83,7 @@ nav:
       - Routing: routing.md
       - Keys, budgets and the ledger: budgets.md
       - API and endpoints: api.md
+      - Looking at a running gateway (ctl): ctl.md
       - Metrics and alerts: metrics.md
       - Providers: providers.md
       - Keeping pools current: discovery.md
