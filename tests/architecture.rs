@@ -103,6 +103,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
         ("server", module(Edge, &[])),
         // The `init` command wires config, model fetching and an in-process gateway; `serve` never uses it.
         ("init", module(Edge, &[])),
+        // The read-only `ctl` client for a running gateway; `serve` never uses it.
+        ("ctl", module(Edge, &[])),
         ("lib", module(Edge, &[])),
         (
             "main",
@@ -343,6 +345,27 @@ fn only_the_init_command_uses_the_init_module() {
     assert!(
         offenders.is_empty(),
         "these files use the init module, which only `humpyard init` may: {offenders:?}"
+    );
+}
+
+/// Only the `ctl` command (`main`) may use the remote-client module, so `serve` can never reach it.
+#[test]
+fn only_the_ctl_command_uses_the_ctl_module() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let module = module_of(path.strip_prefix(&src).unwrap());
+        if matches!(module.as_str(), "ctl" | "main" | "lib") {
+            continue;
+        }
+        let code = production_code(&fs::read_to_string(&path).unwrap());
+        if code.contains("ctl::") || code.contains("humpyard::ctl") {
+            offenders.push(path.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these files use the ctl module, which only `humpyard ctl` may: {offenders:?}"
     );
 }
 
