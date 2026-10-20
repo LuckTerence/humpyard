@@ -253,6 +253,19 @@ async fn a_failure_class_the_guard_does_not_list_ends_the_request_without_callin
     );
 }
 
+/// A provider's 413 (a per-minute token cap on a free plan) is `overflow`: the request is too large for that
+/// member, so with the default guard it reaches the paid tail instead of ending the request (ADR 0023).
+#[tokio::test]
+async fn a_413_from_every_member_reaches_the_tail_under_the_default_guard() {
+    let (base, free, paid) = gateway(413, THEN).await;
+    assert_eq!(ask(&base, "hi").await, (200, "paid".to_string()));
+    assert!(
+        free.hits.load(Ordering::SeqCst) >= 1,
+        "the member was tried"
+    );
+    assert_eq!(paid.hits.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test]
 async fn a_listed_failure_class_reaches_the_tail() {
     let (base, _free, paid) = gateway(

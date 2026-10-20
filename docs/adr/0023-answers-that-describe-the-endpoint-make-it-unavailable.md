@@ -42,6 +42,16 @@ and `402 Payment Required` (a key with no credit left). Both describe the endpoi
 client errors that describe the endpoint across 400 to 451, so a status added later is a visible decision;
 405 and 407 stay request errors until a provider is seen answering them.
 
+## Amendment (2026-10-19)
+
+The decision log showed four deep-tier requests of 35,000 to 77,000 tokens ending in `413 Request too large … tokens
+per minute` from a free plan's cap, with nothing tried after it. A 413 describes the request relative to one
+endpoint, not the endpoint's health, so it differs from the statuses above: it carries the `overflow` class (the
+next endpoint of the target, the next pool member, and the guarded tail under ADR 0024's default), and it is not
+counted against the endpoint, which stays available for smaller requests. If nothing takes the request the client
+gets the real 413. Change: `openspec/changes/treat-413-as-overflow`. The sweep test now pins 413 among the statuses
+that move a pool on.
+
 ## Consequences
 
 A pool of free models survives dead members: the request moves on, the dead endpoint cools after the

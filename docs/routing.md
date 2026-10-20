@@ -181,8 +181,8 @@ often each rule fires and what each pool costs and how long it takes: tune the t
   full timeout each time, so each endpoint (provider + model) has a circuit breaker; see
   [Endpoint health](#endpoint-health).
 - **Across targets**, if every endpoint of the selected target fails, the next target the
-  algorithm returned is tried. By default falling through happens for a context-window overflow,
-  429, 403, 408, any 5xx, connection errors and timeouts, and on `fastest` and pool routes also for a 404, 410, 401 or
+  algorithm returned is tried. By default falling through happens for a context-window overflow
+  (including a provider's 413 "request too large"), 429, 403, 408, any 5xx, connection errors and timeouts, and on `fastest` and pool routes also for a 404, 410, 401 or
   402 (`unavailable`). Other client errors stop at once and reach the client: a 400 or 422 because another
   target would reject the same request, and on other routes a 404 or 401 unless the route opts in with
   `fallback_on = ["unavailable"]`. If no
@@ -486,6 +486,12 @@ that describe the **request** (any other 400, and 422) say nothing about the end
 A 404, 410, 401 or 402 also moves on to the next endpoint of the same target, and to the next target on `fastest` and
 pool routes (see [fallback](#choosing-what-falls-through) above), which is what keeps a pool of free models,
 some of them removed by their providers, from failing requests. Health still never denies service.
+
+A 413 is different: it says the request is too large for that endpoint (a free plan's per-minute token cap, a body
+limit), not that the endpoint is unwell. It moves on like an overflow (the next endpoint of the target, the next
+pool member, and a guarded tail that lists `overflow`, which is the default) but is never counted against the
+endpoint's health, so the endpoint keeps serving smaller requests. If nothing takes the request, the client gets the
+413.
 
 ```toml
 [health]               # all optional; these are the defaults

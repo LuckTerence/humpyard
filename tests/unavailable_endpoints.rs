@@ -380,7 +380,8 @@ async fn explain_says_whether_a_route_moves_on_for_unavailable_answers() {
 /// Statuses such as 405 and 407 are left as request errors until a provider is seen answering them.
 #[tokio::test]
 async fn exactly_the_endpoint_describing_client_errors_move_a_pool_on() {
-    const DESCRIBE_THE_ENDPOINT: [u16; 5] = [401, 402, 403, 404, 410];
+    // 413 is `overflow`: too large for this endpoint, so the pool moves on (ADR 0023, amended again).
+    const DESCRIBE_THE_ENDPOINT: [u16; 6] = [401, 402, 403, 404, 410, 413];
     for status in 400..=451u16 {
         if StatusCode::from_u16(status).is_err() || status == 429 || status == 408 {
             continue; // not a status, or a class of its own with its own tests
@@ -397,4 +398,65 @@ async fn exactly_the_endpoint_describing_client_errors_move_a_pool_on() {
             assert_eq!(code, status, "{status} describes the request and ends it");
         }
     }
+}
+
+/// A 413 (a per-minute token cap, a body limit) says the request is too large for this endpoint, not that
+/// the endpoint is unwell: the request moves on, but the endpoint is not counted as failing and is asked again.
+#[tokio::test]
+async fn a_413_moves_on_without_cooling_the_endpoint() {
+    let rig = rig(413, plain(), FASTEST).await;
+    for _ in 0..5 {
+        assert_eq!(rig.ask("fast").await, (200, "b-live".to_string()));
+    }
+    assert_eq!(
+        rig.dead.calls(),
+        5,
+        "it is asked every time, never skipped as cold"
+    );
+    assert_ne!(rig.state_of("a-dead").await, "cooling_down");
+}
+
+#[tokio::test]
+async fn a_413_moves_on_within_a_target() {
+    let rig = rig(
+        413,
+        plain(),
+        "[routes.one]\ntype = \"passthrough\"\ntargets = [\"multi\"]\n",
+    )
+    .await;
+    for _ in 0..3 {
+        assert_eq!(rig.ask("one").await.0, 200, "the second endpoint serves");
+    }
+    assert_ne!(rig.state_of("a-dead").await, "cooling_down");
+}
+
+#[tokio::test]
+async fn when_every_member_is_too_large_the_client_gets_the_413() {
+    let routes =
+        "[routes.allfast]\ntype = \"fastest\"\ntargets = [\"a-dead\", \"c-dead\"]\nexplore = 0.0\n";
+    let rig = rig(
+        413,
+        json!({"error": {"message": "Request too large for model m"}}),
+        routes,
+    )
+    .await;
+    let resp = reqwest::Client::new()
+        .post(format!("{}/v1/chat/completions", rig.url))
+        .json(&chat_request("allfast", false))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 413);
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("too large"),
+        "the provider's message comes through: {body}"
+    );
+    assert!(
+        rig.dead.calls() >= 1 && rig.second_dead.calls() >= 1,
+        "both were tried"
+    );
 }
