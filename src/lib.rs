@@ -4,6 +4,7 @@ pub mod auth;
 pub mod budget;
 pub mod clock;
 pub mod config;
+pub mod ctl;
 pub mod discover;
 pub mod error;
 pub mod estimate;
