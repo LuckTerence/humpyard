@@ -29,6 +29,9 @@ enum Command {
     /// loopback-only `config.toml`, and sends one test request. Reads keys only from the environment
     /// variables the config names; never prints, stores or asks for a key value, and never overwrites a file.
     Init(InitArgs),
+    /// Look at a running gateway, local or remote: status, models, health, stats, decisions, quota, explain,
+    /// whoami. Read-only; uses your key from an environment variable and never prints it.
+    Ctl(CtlArgs),
     /// Create a virtual key: prints the key once and the config block holding its hash.
     Keygen { id: String },
     /// Propose prices from a public source, or check a config's prices for drift. Reads a source
@@ -48,6 +51,82 @@ enum Command {
         #[command(subcommand)]
         command: ModelsCommand,
     },
+}
+
+#[derive(clap::Args)]
+struct CtlArgs {
+    /// The gateway, like `https://gateway.example` or `http://127.0.0.1:8080`. Default: `HUMPYARD_URL`.
+    #[arg(long, global = true)]
+    url: Option<String>,
+    /// The environment variable that holds your key (never a flag value, which would reach shell history).
+    #[arg(long, global = true, default_value = "HUMPYARD_API_KEY")]
+    key_env: String,
+    /// Print the gateway's answer as JSON, unchanged.
+    #[arg(long, global = true)]
+    json: bool,
+    /// Allow plain `http://` to another machine (the key would cross the network unprotected).
+    #[arg(long, global = true)]
+    allow_insecure_http: bool,
+    #[command(subcommand)]
+    command: CtlCommand,
+}
+
+#[derive(Subcommand)]
+enum CtlCommand {
+    /// A one-screen summary: reachable, config version, endpoints being skipped, your key's spend.
+    Status,
+    /// The routes and targets your key may use.
+    Models,
+    /// Which provider endpoints are being skipped, and which config version is loaded.
+    Health,
+    /// How routes, targets or endpoints have performed.
+    Stats {
+        /// How far back, like 30m, 24h or 7d.
+        #[arg(long)]
+        window: Option<String>,
+        /// route, target or endpoint.
+        #[arg(long)]
+        group_by: Option<String>,
+        #[arg(long)]
+        route: Option<String>,
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// What the router did for your recent requests.
+    Decisions {
+        #[arg(long)]
+        limit: Option<u32>,
+        #[arg(long)]
+        route: Option<String>,
+        #[arg(long)]
+        rule: Option<String>,
+        #[arg(long)]
+        outcome: Option<String>,
+        #[arg(long)]
+        request_id: Option<String>,
+    },
+    /// Provider quota state.
+    Quota,
+    /// What a request would do, without sending it.
+    Explain {
+        /// The model (route) the client would ask for.
+        #[arg(long)]
+        model: Option<String>,
+        /// Estimated prompt size.
+        #[arg(long)]
+        prompt_tokens: Option<u64>,
+        #[arg(long)]
+        tools: bool,
+        #[arg(long)]
+        images: bool,
+        #[arg(long)]
+        subagent: bool,
+        /// A full request description as JSON, instead of the flags above.
+        #[arg(long)]
+        body: Option<String>,
+    },
+    /// Your key's limits, spend and budget state.
+    Whoami,
 }
 
 #[derive(clap::Args)]
@@ -561,6 +640,9 @@ async fn main() -> ExitCode {
     if let Command::Init(args) = command {
         return init_command(args).await;
     }
+    if let Command::Ctl(args) = command {
+        return ctl_command(args).await;
+    }
     if let Command::MigrateModelrelay(args) = command {
         return match migrate_command(args).await {
             Ok(()) => ExitCode::SUCCESS,
@@ -575,6 +657,76 @@ async fn main() -> ExitCode {
         Err(message) => {
             eprintln!("error: {message}");
             ExitCode::FAILURE
+        }
+    }
+}
+
+async fn ctl_command(args: CtlArgs) -> ExitCode {
+    use humpyard::ctl::{Command as C, Settings};
+    let settings = Settings {
+        url: args.url,
+        key_env: args.key_env,
+        allow_insecure_http: args.allow_insecure_http,
+        json: args.json,
+    };
+    let command = match args.command {
+        CtlCommand::Status => C::Status,
+        CtlCommand::Models => C::Models,
+        CtlCommand::Health => C::Health,
+        CtlCommand::Quota => C::Quota,
+        CtlCommand::Whoami => C::Whoami,
+        CtlCommand::Stats {
+            window,
+            group_by,
+            route,
+            target,
+        } => C::Stats {
+            window,
+            group_by,
+            route,
+            target,
+        },
+        CtlCommand::Decisions {
+            limit,
+            route,
+            rule,
+            outcome,
+            request_id,
+        } => C::Decisions {
+            limit,
+            route,
+            rule,
+            outcome,
+            request_id,
+        },
+        CtlCommand::Explain {
+            model,
+            prompt_tokens,
+            tools,
+            images,
+            subagent,
+            body,
+        } => C::Explain {
+            model,
+            prompt_tokens,
+            tools,
+            images,
+            subagent,
+            body_file: body,
+        },
+    };
+    let env = |name: &str| std::env::var(name).ok();
+    let result = match humpyard::ctl::connect(&settings, &env) {
+        Ok(gateway) => {
+            humpyard::ctl::run(&gateway, command, settings.json, &mut std::io::stdout()).await
+        }
+        Err(failure) => Err(failure),
+    };
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(failure) => {
+            eprintln!("error: {}", failure.message());
+            ExitCode::from(failure.exit_code())
         }
     }
 }
@@ -642,7 +794,8 @@ async fn run(command: Command) -> Result<(), String> {
         Command::Prices { .. }
         | Command::MigrateModelrelay(_)
         | Command::Models { .. }
-        | Command::Init(_) => Ok(()), // handled in `main`
+        | Command::Init(_)
+        | Command::Ctl(_) => Ok(()), // handled in `main`
         Command::Serve { config: path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             let listener = tokio::net::TcpListener::bind(config.listen)
