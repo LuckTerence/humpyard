@@ -16,7 +16,7 @@
    preferring the largest, `listen = "127.0.0.1:8080"`, and no keys. The file is loaded by the normal config parser
    before it is written; a file that would not load is never written. An existing output file is never overwritten.
 5. **Prove.** The command starts the gateway in process on an ephemeral loopback port, sends one request to `fast`,
-   prints the reply, the route taken and the cost, and stops it. Then it prints the `serve` command and client
+   prints the reply, which target served it and how long it took (no cost: `init` writes no prices), and stops it. Then it prints the `serve` command and client
    snippets.
 
 ## Exposing the gateway

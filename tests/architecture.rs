@@ -101,6 +101,8 @@ fn rules() -> BTreeMap<&'static str, Module> {
             ),
         ),
         ("server", module(Edge, &[])),
+        // The `init` command wires config, model fetching and an in-process gateway; `serve` never uses it.
+        ("init", module(Edge, &[])),
         ("lib", module(Edge, &[])),
         (
             "main",
@@ -323,6 +325,27 @@ fn only_the_prices_command_uses_the_price_source_module() {
     );
 }
 
+/// Only the `init` command (`main`) may use the guided-config module, so `serve` can never reach it.
+#[test]
+fn only_the_init_command_uses_the_init_module() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders = Vec::new();
+    for path in rust_files(&src) {
+        let module = module_of(path.strip_prefix(&src).unwrap());
+        if matches!(module.as_str(), "init" | "main" | "lib") {
+            continue;
+        }
+        let code = production_code(&fs::read_to_string(&path).unwrap());
+        if code.contains("init::") || code.contains("humpyard::init") {
+            offenders.push(path.display().to_string());
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "these files use the init module, which only `humpyard init` may: {offenders:?}"
+    );
+}
+
 /// Only the `migrate-modelrelay` command (`main`) may use the module that reads a `ModelRelay` setup, so
 /// `serve` can never fetch one.
 #[test]
@@ -353,7 +376,8 @@ fn only_the_models_commands_use_the_discovery_module() {
     let mut offenders = Vec::new();
     for path in rust_files(&src) {
         let module = module_of(path.strip_prefix(&src).unwrap());
-        if matches!(module.as_str(), "discover" | "main" | "lib") {
+        // `init` fetches one provider's model list for the guided first config; it is also command-only.
+        if matches!(module.as_str(), "discover" | "init" | "main" | "lib") {
             continue;
         }
         let code = production_code(&fs::read_to_string(&path).unwrap());
