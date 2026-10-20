@@ -50,12 +50,21 @@ slow or expensive. humpyard is the **routing and policy layer** in front of your
 
 ## Quick start
 
+The fastest way: let `humpyard init` write the config. It checks your provider's models live and sends a test request.
+
+```sh
+export GROQ_API_KEY=...        # your key; init reads it from the environment and never stores it
+humpyard init --provider groq && humpyard serve --config config.toml
+```
+
+Or by hand with the container:
+
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/gschaetz/humpyard/main/examples/quickstart.toml
 export GROQ_API_KEY=...        # your key; the config reads it from the environment
 
 docker run -d -p 127.0.0.1:8080:8080 -e GROQ_API_KEY \
-  -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.9.5
+  -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.10.0
 
 curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'

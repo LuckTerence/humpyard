@@ -7,4 +7,4 @@
 - [x] 1.5 Non-interactive flags and the non-loopback key-with-budget rule
 - [x] 1.6 Tests against mock providers: retired model, missing key, existing file, no key value in output, non-loopback
 - [x] 1.7 docs/deployment.md documents `humpyard init`; verify docs/architecture.md still matches
-- [ ] 1.8 After the release that contains it: the README quick start leads with `humpyard init`; archive this change
+- [x] 1.8 After the release that contains it: the README quick start leads with `humpyard init`; archive this change
