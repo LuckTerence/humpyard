@@ -25,6 +25,10 @@ enum Command {
     },
     /// Validate a config file without starting the server.
     CheckConfig { path: PathBuf },
+    /// Write a first config interactively or from flags: checks each provider's models live, writes a
+    /// loopback-only `config.toml`, and sends one test request. Reads keys only from the environment
+    /// variables the config names; never prints, stores or asks for a key value, and never overwrites a file.
+    Init(InitArgs),
     /// Create a virtual key: prints the key once and the config block holding its hash.
     Keygen { id: String },
     /// Propose prices from a public source, or check a config's prices for drift. Reads a source
@@ -44,6 +48,25 @@ enum Command {
         #[command(subcommand)]
         command: ModelsCommand,
     },
+}
+
+#[derive(clap::Args)]
+struct InitArgs {
+    /// A built-in provider to set up (groq, openrouter, nvidia); repeatable. Omit to be asked.
+    #[arg(short, long)]
+    provider: Vec<String>,
+    /// Another OpenAI-compatible endpoint, as `NAME,BASE_URL,KEY_ENV,MODEL`; repeatable.
+    #[arg(long)]
+    custom: Vec<String>,
+    /// Where to write the config. Never overwritten.
+    #[arg(short, long, default_value = "config.toml")]
+    out: PathBuf,
+    /// The address to listen on. Anything but loopback also creates a key with a daily token budget.
+    #[arg(long, default_value = humpyard::init::default_listen())]
+    listen: String,
+    /// Do not send the test request.
+    #[arg(long)]
+    no_test_request: bool,
 }
 
 #[derive(Subcommand)]
@@ -518,7 +541,14 @@ fn reload_signals() -> Option<tokio::sync::mpsc::Receiver<()>> {
 async fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                // `init` prints its own report; the in-process test request should not log into it.
+                if matches!(std::env::args().nth(1).as_deref(), Some("init")) {
+                    "warn".into()
+                } else {
+                    "info".into()
+                }
+            }),
         )
         .init();
     let command = Cli::parse().command;
@@ -527,6 +557,9 @@ async fn main() -> ExitCode {
     }
     if let Command::Models { command } = command {
         return models_command(command).await;
+    }
+    if let Command::Init(args) = command {
+        return init_command(args).await;
     }
     if let Command::MigrateModelrelay(args) = command {
         return match migrate_command(args).await {
@@ -538,6 +571,32 @@ async fn main() -> ExitCode {
         };
     }
     match run(command).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => {
+            eprintln!("error: {message}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+async fn init_command(args: InitArgs) -> ExitCode {
+    use std::io::IsTerminal;
+    let options = humpyard::init::InitOptions {
+        providers: args.provider,
+        custom: args.custom,
+        out: args.out,
+        listen: args.listen,
+        no_proof: args.no_test_request,
+    };
+    let env = |name: &str| std::env::var(name).ok();
+    let stdin = std::io::stdin();
+    let mut lock = stdin.lock();
+    let input: Option<&mut dyn std::io::BufRead> = if std::io::stdin().is_terminal() {
+        Some(&mut lock)
+    } else {
+        None
+    };
+    match humpyard::init::run(options, &env, input, &mut std::io::stdout()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("error: {message}");
@@ -580,7 +639,10 @@ async fn run(command: Command) -> Result<(), String> {
             println!("Add to your config:\n\n[keys.{id}]\nsha256 = \"{hash}\"");
             Ok(())
         }
-        Command::Prices { .. } | Command::MigrateModelrelay(_) | Command::Models { .. } => Ok(()), // handled in `main`
+        Command::Prices { .. }
+        | Command::MigrateModelrelay(_)
+        | Command::Models { .. }
+        | Command::Init(_) => Ok(()), // handled in `main`
         Command::Serve { config: path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             let listener = tokio::net::TcpListener::bind(config.listen)

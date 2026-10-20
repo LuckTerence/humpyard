@@ -25,7 +25,7 @@ The command SHALL write a model only when the provider lists it and it answers o
 - **THEN** it is not written and the command picks another listed model or reports that none is available
 
 ### Requirement: The written file loads and is proven
-The command SHALL load the file with the configuration parser before writing it and SHALL NOT write a file that does not load. It SHALL write a loopback listener by default, send one request through the gateway in process, and print the reply, the route taken and the cost.
+The command SHALL load the file with the configuration parser before writing it and SHALL NOT write a file that does not load. It SHALL write a loopback listener by default, send one request through the gateway in process, and print the reply, the target that served it and the time it took.
 
 #### Scenario: A working setup
 - **WHEN** a provider key is set and a model answers
