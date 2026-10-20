@@ -8,6 +8,26 @@ the smallest; [examples/config.toml](../examples/config.toml) adds failover acro
 one with `humpyard check-config`) and the provider API keys in **environment variables** named
 by the config (`api_key_env`). Keys are never stored in the config.
 
+## First config: `humpyard init`
+
+`humpyard init` (after 0.9.5; a release built from `main` has it) writes a working `config.toml` for you. Export your provider key, then name the provider:
+
+```sh
+export GROQ_API_KEY=...
+humpyard init --provider groq --out config.toml
+humpyard serve --config config.toml
+```
+
+- Built-in providers are `groq`, `openrouter` and `nvidia`; `--custom NAME,BASE_URL,KEY_ENV,MODEL` adds any
+  OpenAI-compatible endpoint. Run it without `--provider` in a terminal to be asked.
+- Each key is read only from the environment variable the config names. It is never printed, stored or asked for.
+- It lists each provider's models and writes a model only if the provider lists it and it answers one small
+  request, so a retired model never reaches the file. A provider whose variable is unset is written unchecked.
+- The file listens on `127.0.0.1` and has two targets, `fast` and `deep`. It sends one test request through
+  the result and prints the reply and the target that served it. An existing file is never overwritten.
+- `--listen 0.0.0.0:8080` (anything not on loopback) also creates a virtual key with a daily token budget and
+  prints it once; the file holds only its hash.
+
 ## Release binary
 
 Each [GitHub release](https://github.com/gschaetz/humpyard/releases) has tarballs for macOS arm64

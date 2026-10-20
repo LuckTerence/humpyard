@@ -17,7 +17,7 @@ that the project is missing.
 - It lists each provider's models, keeps only models that exist now, and confirms each chosen model with one small
   request before writing it.
 - It writes a loopback-only config with a `fast` and a `deep` route, loads it with the same parser `serve` uses,
-  sends one test request through it, and prints the answer, the route, the cost and a ready snippet for Claude Code,
+  sends one test request through it, and prints the answer, the target that served it, the latency and a ready snippet for Claude Code,
   Codex or OpenClaw.
 - A non-interactive form takes the same choices as flags, for scripts and CI.
 - Out of scope: running as a service, editing an existing config (the admin work in ADR 0025), prompting for or
