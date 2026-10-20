@@ -19,7 +19,7 @@ use switchyard_protocol::{
 use crate::budget::BudgetTracker;
 use crate::clock::Clock;
 use crate::config::{FallbackClass, FallbackOn, Price};
-use crate::error::{fallback_class, relabel_unavailable, stop_fallback};
+use crate::error::{fallback_class, is_too_large, relabel_unavailable, stop_fallback};
 use crate::estimate::tokens_for_bytes;
 use crate::latency::Latency;
 use crate::ledger::{Attempt, Entry, Kind, Ledger};
@@ -426,6 +426,11 @@ impl RoutedLlmClient for Metered {
                 // Switchyard moves to the next target on a 503 but not on a 404 or 401, so an unavailable
                 // endpoint's answer is re-labelled; the original is restored if no target answers.
                 Some(FallbackClass::Unavailable) => relabel_unavailable(&error),
+                // A 413 (too large for this endpoint) is `overflow`; Switchyard only moves on for a 503,
+                // so it is carried the same way and restored if no target takes the request.
+                Some(FallbackClass::Overflow) if is_too_large(&error) => {
+                    relabel_unavailable(&error)
+                }
                 _ => error,
             })?;
         let id = self.ctx.next_id.fetch_add(1, Ordering::Relaxed);

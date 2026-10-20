@@ -13,7 +13,7 @@ use switchyard_protocol::{
 
 use crate::clock::Clock;
 use crate::config::{Config, Endpoint, HealthConfig, Price, Provider};
-use crate::error::{TIMEOUT_MARKER, fallback_class, is_forbidden, is_unavailable};
+use crate::error::{TIMEOUT_MARKER, fallback_class, is_forbidden, is_too_large, is_unavailable};
 use crate::health::{Admission, Breaker, Snapshot, Transition};
 
 /// Response header naming the provider endpoint that served a request.
@@ -261,6 +261,20 @@ impl TargetClient {
                         model = %endpoint.model,
                         error = %error,
                         "endpoint failed; trying next"
+                    );
+                    last_error = Some(error);
+                }
+                Err(error) if is_too_large(&error) => {
+                    // A 413 says this request is too large for this endpoint, not that the endpoint is
+                    // unwell: its health is left alone (the probe slot is released on drop) and another
+                    // endpoint of the target may take the request (ADR 0023).
+                    if position + 1 >= count {
+                        return Err(error);
+                    }
+                    tracing::warn!(
+                        provider = %endpoint.provider,
+                        model = %endpoint.model,
+                        "request too large for this endpoint; trying next"
                     );
                     last_error = Some(error);
                 }

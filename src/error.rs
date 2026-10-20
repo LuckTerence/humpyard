@@ -160,6 +160,13 @@ pub fn is_unavailable(error: &LlmClientError) -> bool {
     matches!(error, LlmClientError::UpstreamHttp { status, body } if is_unavailable_answer(*status, body))
 }
 
+/// Whether `error` is a 413: the request is too large for this endpoint (a per-minute token cap, a body
+/// limit). It says nothing about the endpoint's health, and another endpoint may take the request (ADR 0023).
+#[must_use]
+pub fn is_too_large(error: &LlmClientError) -> bool {
+    matches!(error, LlmClientError::UpstreamHttp { status, .. } if *status == StatusCode::PAYLOAD_TOO_LARGE)
+}
+
 /// Whether `error` is a 403, which counts against the endpoint's health but does not fail over within a
 /// target (its class is `forbidden`).
 #[must_use]
@@ -178,6 +185,8 @@ pub fn fallback_class(error: &LlmClientError) -> Option<FallbackClass> {
         LlmClientError::UpstreamHttp { status, body } => {
             if *status == StatusCode::GATEWAY_TIMEOUT && body == TIMEOUT_MARKER {
                 Some(FallbackClass::Timeout)
+            } else if *status == StatusCode::PAYLOAD_TOO_LARGE {
+                Some(FallbackClass::Overflow)
             } else if *status == StatusCode::TOO_MANY_REQUESTS {
                 Some(FallbackClass::RateLimit)
             } else if *status == StatusCode::FORBIDDEN {
