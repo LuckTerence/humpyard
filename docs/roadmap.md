@@ -4,7 +4,7 @@ What has shipped, what is being built, and what comes next, at a glance. The det
 lives in the [component status table](architecture.md#component-status), the OpenSpec change named
 in it, and the [decision records](adr/README.md). Update this page in the same PR as the change.
 
-Last updated: 2026-10-19. Latest release: 0.10.0. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
+Last updated: 2026-10-20. Latest release: 0.11.0. Community: [Discord](https://discord.gg/qfTGr7KTfq) for questions and feedback; GitHub issues for bugs and requests.
 
 ## Shipped
 
@@ -31,6 +31,7 @@ Last updated: 2026-10-19. Latest release: 0.10.0. Community: [Discord](https://d
 | 0.9.4 | 2026-10-17 | A guarded tail for pool routes: `then = { targets, on }` on a `fastest` pool route names fixed targets (for example a paid one) reached only when a listed failure class (default `overflow`) ends the pool's last member, so a prompt too big for every free model is still served while free models keep failing over among themselves; cold members are retried before the tail is used; `explain` shows the tail. `migrate-modelrelay` gains `--rename FROM=TO` and `--quality-weight W`. [ADR 0024](adr/0024-a-pool-route-can-end-in-a-guarded-tail.md). |
 | 0.9.5 | 2026-10-17 | A pool member that answers `410 Gone` (a model removed for good) or `402 Payment Required` (a key with no credit left) is now treated as a dead endpoint, like a 404 or 401: it counts against its health, the request moves on to the next member, and the real status is restored if nobody answers. Found by putting real requests through a live free pool, where one removed model had failed every request. A test pins the exact set of client errors that move a pool on. [ADR 0023](adr/0023-answers-that-describe-the-endpoint-make-it-unavailable.md). |
 | 0.10.0 | 2026-10-19 | `humpyard init`: a guided first config. It checks each provider's models live (listed and answering one small request) so a retired model never reaches the file, writes a loopback-only config with `fast` and `deep` targets, proves it with one in-process request, and creates a budgeted key when asked to listen beyond this machine. The README quick start now leads with it; the example configs no longer name a Groq model that was retired |
+| 0.11.0 | 2026-10-20 | `humpyard ctl`: a read-only client for a running gateway, local or remote (`status`, `models`, `health`, `stats`, `decisions`, `quota`, `explain`, `whoami`). The key comes only from an environment variable, redirects are never followed, plain HTTP is for loopback only, and exit codes tell a refusal (1) from an unreachable gateway (2). Also: a provider's `413 Request too large` is now `overflow` (ADR 0023, amended): the request moves to the next endpoint, pool member or guarded paid tail without counting against the endpoint's health, and the client gets the real 413 if nothing takes it |
 
 ## Building now
 

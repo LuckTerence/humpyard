@@ -64,7 +64,7 @@ curl -fsSLO https://raw.githubusercontent.com/gschaetz/humpyard/main/examples/qu
 export GROQ_API_KEY=...        # your key; the config reads it from the environment
 
 docker run -d -p 127.0.0.1:8080:8080 -e GROQ_API_KEY \
-  -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.10.0
+  -v "$PWD/quickstart.toml:/etc/humpyard/config.toml:ro" ghcr.io/gschaetz/humpyard:0.11.0
 
 curl localhost:8080/v1/chat/completions -H 'content-type: application/json' \
   -d '{"model":"fast","messages":[{"role":"user","content":"hi"}]}'
@@ -92,6 +92,7 @@ starting config, with failover across two providers, is in [examples/config.toml
 | understand failover, selectors and health | [Routing](https://humpyard.dev/routing/) |
 | set budgets, read the usage and decision log, see stats | [Keys, budgets and the ledger](https://humpyard.dev/budgets/) |
 | call the API and its endpoints | [API and endpoints](https://humpyard.dev/api/) |
+| look at a running gateway from the command line (status, stats, decisions, explain) | [`humpyard ctl`](https://humpyard.dev/ctl/) |
 | move from LiteLLM | [Migrating from LiteLLM](https://humpyard.dev/migrating-from-litellm/) |
 | move from ModelRelay | [Moving from ModelRelay](https://humpyard.dev/migrating-from-modelrelay/) |
 | understand the design and why | [Architecture](https://humpyard.dev/architecture/) · [Decision records](https://humpyard.dev/adr/) |
