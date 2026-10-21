@@ -6,4 +6,4 @@
 - [x] 1.4 `humpyard_config_info{fingerprint}` metric, replaced on reload
 - [x] 1.5 `check-config` prints the fingerprint
 - [x] 1.6 `ctl config` with `--json` and `--fingerprint`
-- [ ] 1.7 Tests for each scenario, including that no secret appears; docs (`api.md`, `ctl.md`, `metrics.md`, `budgets.md` for the key setting); architecture test and `docs/architecture.md`; archive this change
+- [x] 1.7 Tests for each scenario, including that no secret appears; docs (`api.md`, `ctl.md`, `metrics.md`, `budgets.md` for the key setting); architecture test and `docs/architecture.md`; archive this change
