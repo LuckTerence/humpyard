@@ -152,6 +152,7 @@ Switchyard decides the macro question (which target); the provider pool answers 
 | `metering.rs` | Per-request metered clients, stream tap, answer/judge classification, `Accounting` |
 | `pricing.rs` / `clock.rs` | micro-USD cost from usage; clock and UTC periods |
 | `server/explain.rs` | The `explain` dry run: reuses selection, budget and policy planning, adds a per-rule trace |
+| `server/config_view.rs` | `GET /v1/config`: the effective configuration as JSON with each target's and route's source and the fingerprint, secrets omitted; readable by keys with `read_config` (or any caller on a keyless gateway) |
 | `select.rs` | Route selection rules: first-match evaluation of conditions on the key, requested model, headers, tags and agent metadata (pure, no HTTP types) |
 | `routing.rs` | Builds one long-lived Switchyard algorithm (and target groups) per route and per bare target; applies policy eligibility, tier substitution and random-weight realignment |
 | `pool.rs` | Per-target `RoutedLlmClient`: ordered endpoints, failover, circuit breaking via `health`, provider attribution header |

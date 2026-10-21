@@ -52,6 +52,7 @@ use crate::select::{Facts, Features, Selectors};
 const TARGET_HEADER: &str = "x-humpyard-target";
 const TOKEN_COUNT_HEADER: &str = "x-humpyard-token-count";
 /// Response headers naming the route that served a request and the selector rule that chose it.
+mod config_view;
 mod decisions;
 mod explain;
 mod metrics;
@@ -442,6 +443,14 @@ impl Snapshot {
 /// The fingerprint a reload compares: the main config text, and the generated targets file when one is
 /// configured, so a new generated file reloads the gateway exactly as an edit would (ADR 0022). Without a
 /// generated file this is the plain fingerprint of the text.
+/// The fingerprint the gateway would report after loading `path` (and the generated file `config` names), for
+/// `check-config`, so a repository can be compared with a running gateway.
+#[must_use]
+pub fn config_fingerprint(path: &std::path::Path, config: &Config) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    Some(watched_fingerprint(&text, config.discovery.file.as_deref()))
+}
+
 fn watched_fingerprint(text: &str, generated: Option<&std::path::Path>) -> String {
     match generated {
         None => fingerprint(text),
@@ -526,6 +535,7 @@ async fn build(config: Config, options: Options, fingerprint: String) -> Result<
         .route("/v1/models", get(list_models))
         .route("/v1/key/info", get(key_info))
         .route("/v1/health", get(endpoint_health))
+        .route("/v1/config", get(config_view::get_config))
         .route("/v1/route/explain", post(explain::explain_route))
         .route("/v1/decisions", get(decisions::list_decisions))
         .route("/v1/stats", get(stats::get_stats))

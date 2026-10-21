@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -211,6 +211,9 @@ pub(super) struct RawKey {
     pub(super) monthly_usd: Option<f64>,
     pub(super) daily_tokens: Option<u64>,
     pub(super) monthly_tokens: Option<u64>,
+    /// May read the effective configuration (`GET /v1/config`); off by default.
+    #[serde(default)]
+    pub(super) read_config: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -343,7 +346,7 @@ fn default_confidence() -> f64 {
 }
 
 /// One provider serving a target, with the model name that provider knows it by.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Endpoint {
     pub provider: String,
@@ -363,7 +366,7 @@ pub struct Endpoint {
 }
 
 /// Token prices in USD per million tokens (numerically equal to micro-USD per token).
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Price {
     pub input: f64,
@@ -376,7 +379,7 @@ pub struct Price {
 }
 
 /// Rates that replace the base price when a call's prompt exceeds `above_tokens`.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PriceTier {
     pub above_tokens: u64,
@@ -454,14 +457,14 @@ impl Price {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum PickerMode {
     EfficientFirst,
     CapableFirst,
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClassifyTrigger {
     #[default]
@@ -478,7 +481,7 @@ fn default_confirmations() -> u32 {
     2
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ClassifierMode {
     Capability,
@@ -486,7 +489,7 @@ pub enum ClassifierMode {
 }
 
 /// One routing rule: when every given condition holds, the request follows `route`.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct SelectorSpec {
     /// Shown in the `x-humpyard-rule` response header; defaults to `select[<index>]`.
@@ -497,7 +500,7 @@ pub struct SelectorSpec {
 }
 
 /// Conditions of a rule, all of which must hold. Text conditions are globs (`*` matches any text).
-#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct When {
     /// The model (route or target) the client asked for.
@@ -529,7 +532,7 @@ pub struct When {
 }
 
 /// Inclusive bounds on a token count; at least one bound is required.
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TokenRange {
     pub min: Option<u64>,
@@ -544,7 +547,7 @@ impl When {
 }
 
 /// Why a call to a target failed, as far as handing the request to the next target is concerned.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FallbackClass {
     /// The prompt does not fit the model's context window.
@@ -621,7 +624,7 @@ impl FallbackOn {
 
 /// A guarded tail for a pool route: fixed targets tried after every pool member, reached only when a
 /// failure of one of the listed classes ends the members (ADR 0024).
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TailSpec {
     pub targets: Vec<String>,
@@ -642,7 +645,7 @@ impl TailSpec {
 
 /// A pool: every target that carries `strength` (and, when set, declares a context window of at least
 /// `min_context_window`), resolved when the configuration loads (ADR 0021).
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct PoolSpec {
     pub strength: String,
@@ -654,7 +657,7 @@ pub struct PoolSpec {
 }
 
 /// A built-in Switchyard algorithm over named targets.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum RouteSpec {
     Passthrough {

@@ -21,6 +21,7 @@ humpyard ctl status
 | `decisions [--limit N] [--route R] [--rule R] [--outcome O] [--request-id ID]` | what the router did for your recent requests |
 | `quota` | provider quota state |
 | `explain --model M [--prompt-tokens N] [--tools] [--images] [--subagent]` | what a request would do, without sending it; `--body FILE` takes a full description as JSON |
+| `config [--fingerprint]` | the configuration the gateway is serving, secrets omitted, with each target's source (`file` or `generated`), the pool routes' resolved members and the config fingerprint; `--fingerprint` prints only the fingerprint. Needs a key with `read_config = true` |
 | `whoami` | your key's limits, spend and budget state |
 
 Output is plain text. `--json` prints the gateway's answer unchanged, for scripts.
@@ -42,6 +43,17 @@ HUMPYARD_URL=http://127.0.0.1:8080 humpyard ctl decisions --limit 5
 ```
 
 A key sees what its own requests did: `decisions` and `stats` are scoped to the key you use.
+
+## Is the running gateway the repository's?
+
+`humpyard check-config FILE` prints the fingerprint the configuration would have (the same function the gateway uses,
+over the config file and the generated targets file). `humpyard ctl config --fingerprint` prints the one the gateway
+is serving. If they differ, the running gateway is not on the files you checked.
+
+```sh
+humpyard check-config config.toml | grep fingerprint
+humpyard ctl config --fingerprint
+```
 
 ## Exit codes
 
