@@ -17,6 +17,8 @@ pub struct KeyRecord {
     pub allowed_routes: Option<Vec<String>>,
     pub limits: Limits,
     pub over_budget: OverBudget,
+    /// May read the effective configuration.
+    pub read_config: bool,
 }
 
 impl KeyRecord {
@@ -52,6 +54,7 @@ impl ConfigKeyStore {
                         allowed_routes: key.allowed_routes.clone(),
                         limits: key.limits,
                         over_budget: key.over_budget,
+                        read_config: key.read_config,
                     },
                 )
             })
@@ -152,6 +155,7 @@ mod tests {
             allowed_routes: None,
             limits: Limits::default(),
             over_budget: OverBudget::Block,
+            read_config: false,
         };
         assert!(record.may_use("anything"));
         record.allowed_routes = Some(vec!["auto".into()]);
@@ -172,6 +176,7 @@ mod tests {
                 allowed_routes: None,
                 over_budget: OverBudget::Block,
                 limits: Limits::default(),
+                read_config: false,
             },
         )]
         .into();

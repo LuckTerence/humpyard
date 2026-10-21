@@ -61,6 +61,7 @@ cannot call inference or any other endpoint.
 | `humpyard_ledger_dropped_total`, `humpyard_ledger_failed_total` | counter | none |
 | `humpyard_config_reload_total` | counter | `result` (`ok`, `rejected`) |
 | `humpyard_config_last_reload_ok` | gauge | none |
+| `humpyard_config_info` | gauge | `fingerprint` (the serving configuration's; one series, always 1) |
 | `humpyard_config_loaded_timestamp_seconds` | gauge | none |
 | `humpyard_quota_percent` | gauge | `provider`, `window` |
 | `humpyard_quota_snapshot_age_seconds` | gauge | `provider` |

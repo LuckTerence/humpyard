@@ -67,6 +67,9 @@ pub enum Command {
         request_id: Option<String>,
     },
     Quota,
+    Config {
+        fingerprint: bool,
+    },
     Explain {
         model: Option<String>,
         prompt_tokens: Option<u64>,
@@ -410,6 +413,86 @@ pub fn render_decisions(v: &Value) -> String {
     )
 }
 
+#[must_use]
+pub fn render_config(v: &Value) -> String {
+    let mut out = format!(
+        "fingerprint {}  (loaded at {} ms)\n\n",
+        scalar(&v["config"]["fingerprint"]),
+        scalar(&v["config"]["loaded_at_ms"])
+    );
+    out.push_str("settings:\n");
+    out.push_str(&tree(&v["settings"], 2));
+    let rows = |section: &str, f: &dyn Fn(&str, &Value) -> Value| -> Vec<Value> {
+        v[section]
+            .as_object()
+            .map(|m| m.iter().map(|(k, val)| f(k, val)).collect())
+            .unwrap_or_default()
+    };
+    let providers = rows(
+        "providers",
+        &|name, p| json!({"name": name, "base_url": p["base_url"], "timeout": p["timeout_secs"], "retries": p["max_retries"]}),
+    );
+    out.push_str("\nproviders:\n");
+    out.push_str(&table(
+        &providers,
+        &[
+            ("NAME", "name"),
+            ("BASE URL", "base_url"),
+            ("TIMEOUT s", "timeout"),
+            ("RETRIES", "retries"),
+        ],
+    ));
+    let targets = rows("targets", &|name, t| {
+        let first = &t["endpoints"][0];
+        json!({"name": name, "source": t["source"], "class": t["class"], "quality": t["quality"],
+               "endpoint": format!("{}/{}", scalar(&first["provider"]), scalar(&first["model"])),
+               "endpoints": t["endpoints"].as_array().map_or(0, Vec::len)})
+    });
+    out.push_str("\ntargets:\n");
+    out.push_str(&table(
+        &targets,
+        &[
+            ("NAME", "name"),
+            ("SOURCE", "source"),
+            ("CLASS", "class"),
+            ("QUALITY", "quality"),
+            ("FIRST ENDPOINT", "endpoint"),
+            ("#", "endpoints"),
+        ],
+    ));
+    let routes = rows("routes", &|name, r| {
+        let members = r["resolved"]["members"].as_array().map(Vec::len);
+        json!({"name": name, "type": r["type"], "members": members, "classes": r["allowed_classes"], "tail": r["then"]["targets"]})
+    });
+    out.push_str("\nroutes:\n");
+    out.push_str(&table(
+        &routes,
+        &[
+            ("NAME", "name"),
+            ("TYPE", "type"),
+            ("POOL MEMBERS", "members"),
+            ("CLASSES", "classes"),
+            ("TAIL", "tail"),
+        ],
+    ));
+    let keys = rows(
+        "keys",
+        &|id, k| json!({"id": id, "routes": k["allowed_routes"], "read_config": k["read_config"]}),
+    );
+    if !keys.is_empty() {
+        out.push_str("\nkeys:\n");
+        out.push_str(&table(
+            &keys,
+            &[
+                ("ID", "id"),
+                ("ROUTES", "routes"),
+                ("READ CONFIG", "read_config"),
+            ],
+        ));
+    }
+    out
+}
+
 /// What `explain` needs: the body the user gave, or one built from the flags.
 fn explain_body(command: &Command) -> Result<Value, Failure> {
     let Command::Explain {
@@ -462,6 +545,7 @@ pub async fn run(
         Command::Health => ("/v1/health", vec![], None),
         Command::Quota => ("/v1/quota", vec![], None),
         Command::Whoami => ("/v1/key/info", vec![], None),
+        Command::Config { .. } => ("/v1/config", vec![], None),
         Command::Stats {
             window,
             group_by,
@@ -505,11 +589,16 @@ pub async fn run(
         return Ok(());
     }
     let v = parse(&body)?;
+    if matches!(command, Command::Config { fingerprint: true }) {
+        emit(&format!("{}\n", scalar(&v["config"]["fingerprint"])));
+        return Ok(());
+    }
     let text = match command {
         Command::Models => render_models(&v),
         Command::Health => render_health(&v),
         Command::Stats { .. } => render_stats(&v),
         Command::Decisions { .. } => render_decisions(&v),
+        Command::Config { .. } => render_config(&v),
         _ => tree(&v, 0),
     };
     emit(&text);

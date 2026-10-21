@@ -20,6 +20,10 @@ Paste the printed block into the config. Clients send `Authorization: Bearer <ke
 restricted by `allowed_routes` that asks for another route gets 403. Logs name the key **id** only,
 never the key or its hash. `GET /v1/key/info` shows the calling key's limits, spend and state.
 
+A key can also set `read_config = true` (default `false`) to read `GET /v1/config`, the effective configuration with its fingerprint
+(see [`humpyard ctl config`](ctl.md)). Any other key gets 403 `config_not_readable`; the view shows provider
+addresses and prices, so give the setting to an operator key and not to a consumer. A gateway with no `[keys]` is open, and so is the view.
+
 ## Prices and cost
 
 Each endpoint may declare `price = { input, output, cached_input }` in USD per million tokens.

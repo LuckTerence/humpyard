@@ -48,6 +48,14 @@ fn scraped(state: &AppState, snap: &Snapshot) -> Vec<Family> {
             )],
         ),
         metrics::gauge(
+            "config_info",
+            "The fingerprint of the serving configuration; always 1.",
+            vec![(
+                vec![("fingerprint", snap.fingerprint.clone())],
+                Value::Int(1),
+            )],
+        ),
+        metrics::gauge(
             "config_loaded_timestamp_seconds",
             "When the serving configuration was loaded, in Unix seconds.",
             vec![(

@@ -110,6 +110,8 @@ pub struct KeyConfig {
     pub allowed_routes: Option<Vec<String>>,
     pub over_budget: OverBudget,
     pub limits: Limits,
+    /// May read the effective configuration (`GET /v1/config`).
+    pub read_config: bool,
 }
 
 /// Per-period limits; `None` means unlimited.
@@ -330,6 +332,7 @@ impl Config {
                             sha256,
                             allowed_routes: key.allowed_routes,
                             over_budget: key.over_budget,
+                            read_config: key.read_config,
                             limits: Limits {
                                 daily_usd: key.daily_usd,
                                 monthly_usd: key.monthly_usd,

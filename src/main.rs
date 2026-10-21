@@ -125,6 +125,13 @@ enum CtlCommand {
         #[arg(long)]
         body: Option<String>,
     },
+    /// The configuration the gateway is serving, with where each part came from. Needs a key with
+    /// `read_config = true`.
+    Config {
+        /// Print only the fingerprint (to compare with `check-config` on the repository's files).
+        #[arg(long)]
+        fingerprint: bool,
+    },
     /// Your key's limits, spend and budget state.
     Whoami,
 }
@@ -675,6 +682,7 @@ async fn ctl_command(args: CtlArgs) -> ExitCode {
         CtlCommand::Health => C::Health,
         CtlCommand::Quota => C::Quota,
         CtlCommand::Whoami => C::Whoami,
+        CtlCommand::Config { fingerprint } => C::Config { fingerprint },
         CtlCommand::Stats {
             window,
             group_by,
@@ -762,6 +770,9 @@ async fn run(command: Command) -> Result<(), String> {
         Command::CheckConfig { path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             println!("config ok");
+            if let Some(fingerprint) = humpyard::server::config_fingerprint(&path, &config) {
+                println!("fingerprint: {fingerprint}");
+            }
             match &config.discovery_state {
                 humpyard::config::DiscoveryState::Loaded(n) => {
                     println!("generated targets: {n} loaded");
