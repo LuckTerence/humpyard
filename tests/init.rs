@@ -228,3 +228,71 @@ async fn out_dash_prints_valid_config_to_stdout_and_progress_to_stderr() {
     );
     assert!(!progress_str.contains(SECRET));
 }
+
+#[tokio::test]
+async fn out_dash_with_exposed_listener_shows_key_only_in_progress_and_hash_in_config() {
+    let base = provider(false).await;
+    let options = InitOptions {
+        providers: vec![],
+        custom: vec![format!("mock,{base},MOCK_KEY,m")],
+        out: std::path::PathBuf::from("-"),
+        listen: "0.0.0.0:8080".into(),
+        no_proof: false,
+    };
+    let env = |name: &str| {
+        (name == "MOCK_KEY")
+            .then(|| Some(SECRET.to_string()))
+            .flatten()
+    };
+    let mut progress: Vec<u8> = Vec::new();
+    let mut config: Vec<u8> = Vec::new();
+    let result = run(options, &env, None, &mut progress, &mut config).await;
+    result.unwrap();
+
+    let config_str = String::from_utf8(config).unwrap();
+    let progress_str = String::from_utf8(progress).unwrap();
+
+    // 1. One-time key must appear only in progress output (stderr) and never in config (stdout)
+    assert!(
+        progress_str.contains("Key (shown once"),
+        "progress must show the one-time key: {progress_str}"
+    );
+    let shown = progress_str
+        .lines()
+        .find(|l| l.starts_with("Key (shown once"))
+        .expect("one-time key line must be present");
+    let key = shown
+        .rsplit(": ")
+        .next()
+        .expect("key value must follow colon");
+    assert!(
+        key.starts_with("sk-humpyard-"),
+        "key must have expected prefix: {key}"
+    );
+    assert!(
+        !config_str.contains(key),
+        "plain key must NEVER appear in config output"
+    );
+    assert!(
+        !config_str.contains("Key (shown once"),
+        "one-time key banner must not appear in config"
+    );
+
+    // 2. Config must contain the key's sha256 hash and key section, not the key itself
+    assert!(
+        config_str.contains("[keys.default]") && config_str.contains("sha256 = \""),
+        "config must contain the key's sha256 hash: {config_str}"
+    );
+
+    // 3. TOML config must parse as valid humpyard configuration
+    let loaded = humpyard::config::Config::from_toml(&config_str, |name| {
+        (name == "MOCK_KEY")
+            .then(|| Some("test-key".into()))
+            .flatten()
+    });
+    assert!(loaded.is_ok(), "config must pass config parser: {loaded:?}");
+
+    // Secret provider key must not leak anywhere
+    assert!(!config_str.contains(SECRET));
+    assert!(!progress_str.contains(SECRET));
+}
