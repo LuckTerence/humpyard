@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 use humpyard::config::Config;
 use humpyard::discover;
@@ -50,6 +50,11 @@ enum Command {
     Models {
         #[command(subcommand)]
         command: ModelsCommand,
+    },
+    /// Print a shell completion script for bash, zsh, fish or powershell.
+    Completions {
+        /// The shell to generate completions for.
+        shell: clap_complete::Shell,
     },
 }
 
@@ -682,6 +687,11 @@ async fn main() -> ExitCode {
         )
         .init();
     let command = Cli::parse().command;
+    if let Command::Completions { shell } = command {
+        let mut cmd = Cli::command();
+        clap_complete::generate(shell, &mut cmd, "humpyard", &mut std::io::stdout());
+        return ExitCode::SUCCESS;
+    }
     if let Command::Prices { command } = command {
         return prices_command(command).await;
     }
@@ -881,7 +891,8 @@ async fn run(command: Command) -> Result<(), String> {
         | Command::MigrateModelrelay(_)
         | Command::Models { .. }
         | Command::Init(_)
-        | Command::Ctl(_) => Ok(()), // handled in `main`
+        | Command::Ctl(_)
+        | Command::Completions { .. } => Ok(()), // handled in `main`
         Command::Serve { config: path } => {
             let config = Config::load(&path).map_err(|e| e.to_string())?;
             let listener = tokio::net::TcpListener::bind(config.listen)

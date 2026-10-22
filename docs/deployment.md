@@ -46,6 +46,23 @@ install -m 755 humpyard-v0.12.0-aarch64-apple-darwin/humpyard ~/.local/bin/
 - Linux binaries are built on Ubuntu 24.04 and need glibc 2.39 or newer. On an older distribution
   use the container image.
 
+## Shell completions
+
+Generate completions for your shell with `humpyard completions <shell>`:
+
+```sh
+# bash (requires bash-completion)
+humpyard completions bash > /etc/bash_completion.d/humpyard
+# or for your user only:
+humpyard completions bash > ~/.local/share/bash-completion/completions/humpyard
+
+# zsh
+humpyard completions zsh > "${fpath[1]}/_humpyard"
+
+# fish
+humpyard completions fish > ~/.config/fish/completions/humpyard.fish
+```
+
 ## Container image
 
 ```sh
