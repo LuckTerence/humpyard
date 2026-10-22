@@ -25,6 +25,8 @@ humpyard serve --config config.toml
   request, so a retired model never reaches the file. A provider whose variable is unset is written unchecked.
 - The file listens on `127.0.0.1` and has two targets, `fast` and `deep`. It sends one test request through
   the result and prints the reply and the target that served it. An existing file is never overwritten.
+- Pass `--out -` to print the configuration to standard output instead of creating a file, with progress
+  messages routed to standard error. An existing file is never checked in that mode.
 - `--listen 0.0.0.0:8080` (anything not on loopback) also creates a virtual key with a daily token budget and
   prints it once; the file holds only its hash.
 

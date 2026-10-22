@@ -144,7 +144,7 @@ struct InitArgs {
     /// Another OpenAI-compatible endpoint, as `NAME,BASE_URL,KEY_ENV,MODEL`; repeatable.
     #[arg(long)]
     custom: Vec<String>,
-    /// Where to write the config. Never overwritten.
+    /// Where to write the config. Never overwritten. Pass '-' to write to stdout.
     #[arg(short, long, default_value = "config.toml")]
     out: PathBuf,
     /// The address to listen on. Anything but loopback also creates a key with a daily token budget.
@@ -741,6 +741,7 @@ async fn ctl_command(args: CtlArgs) -> ExitCode {
 
 async fn init_command(args: InitArgs) -> ExitCode {
     use std::io::IsTerminal;
+    let is_stdout = args.out == std::path::Path::new("-");
     let options = humpyard::init::InitOptions {
         providers: args.provider,
         custom: args.custom,
@@ -756,7 +757,26 @@ async fn init_command(args: InitArgs) -> ExitCode {
     } else {
         None
     };
-    match humpyard::init::run(options, &env, input, &mut std::io::stdout()).await {
+    let result = if is_stdout {
+        humpyard::init::run(
+            options,
+            &env,
+            input,
+            &mut std::io::stderr(),
+            &mut std::io::stdout(),
+        )
+        .await
+    } else {
+        humpyard::init::run(
+            options,
+            &env,
+            input,
+            &mut std::io::stdout(),
+            &mut std::io::sink(),
+        )
+        .await
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
             eprintln!("error: {message}");

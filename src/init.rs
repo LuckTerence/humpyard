@@ -444,14 +444,17 @@ fn snippets(listen: &str, file: &std::path::Path, out: &mut dyn Write) {
 }
 
 /// Runs the command. `env` reads the environment (injected for tests); `input` is the terminal when the
-/// providers are to be asked for.
+/// providers are to be asked for. Progress and status messages go to `progress`. If `options.out` is `-`,
+/// the rendered configuration is written to `config` instead of creating a file on disk.
 pub async fn run(
     options: InitOptions,
     env: &dyn Fn(&str) -> Option<String>,
     input: Option<&mut dyn BufRead>,
-    out: &mut dyn Write,
+    progress: &mut dyn Write,
+    config: &mut dyn Write,
 ) -> Result<(), String> {
-    if options.out.exists() {
+    let is_stdout = options.out == std::path::Path::new("-");
+    if !is_stdout && options.out.exists() {
         return Err(format!(
             "{} already exists; init never overwrites a file (choose another --out)",
             options.out.display()
@@ -463,18 +466,18 @@ pub async fn run(
         let input = input.ok_or(
             "name the providers with --provider NAME (groq, openrouter, nvidia) or --custom, or run this in a terminal",
         )?;
-        names = ask_providers(input, out)?;
+        names = ask_providers(input, progress)?;
     }
     if names.is_empty() && options.custom.is_empty() {
         return Err("no provider chosen".into());
     }
     let todo = candidates(&names, &options.custom)?;
 
-    let _ = writeln!(out, "Checking providers:");
+    let _ = writeln!(progress, "Checking providers:");
     let mut checked = Vec::new();
     for Candidate { pick, prefs } in todo {
         let key = env(&pick.key_env).filter(|k| !k.is_empty());
-        if let Some(c) = check_provider(pick, prefs, key, out).await {
+        if let Some(c) = check_provider(pick, prefs, key, progress).await {
             checked.push(c);
         }
     }
@@ -487,7 +490,7 @@ pub async fn run(
         let (key, hash) =
             crate::auth::generate_key().map_err(|e| format!("cannot gather randomness: {e}"))?;
         let _ = writeln!(
-            out,
+            progress,
             "\n{} is reachable from other machines, so a key with a daily token budget was made.\n\
              Key (shown once; store it securely): {key}",
             options.listen
@@ -507,14 +510,21 @@ pub async fn run(
         }
     };
     Config::from_toml(&text, loading_env).map_err(|e| format!("the config would not load: {e}"))?;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&options.out)
-        .map_err(|e| format!("cannot create {}: {e}", options.out.display()))?;
-    file.write_all(text.as_bytes())
-        .map_err(|e| format!("cannot write {}: {e}", options.out.display()))?;
-    let _ = writeln!(out, "\nWrote {}", options.out.display());
+
+    if is_stdout {
+        config
+            .write_all(text.as_bytes())
+            .map_err(|e| format!("cannot write to stdout: {e}"))?;
+    } else {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&options.out)
+            .map_err(|e| format!("cannot create {}: {e}", options.out.display()))?;
+        file.write_all(text.as_bytes())
+            .map_err(|e| format!("cannot write {}: {e}", options.out.display()))?;
+        let _ = writeln!(progress, "\nWrote {}", options.out.display());
+    }
 
     let live: Vec<Pick> = checked
         .iter()
@@ -524,17 +534,23 @@ pub async fn run(
     if options.no_proof || live.is_empty() {
         if live.is_empty() {
             let _ = writeln!(
-                out,
+                progress,
                 "No test request was sent because no key was set; set one and run `humpyard check-config`."
             );
         }
-    } else if let Err(e) = prove(&live, env, out).await {
-        let _ = writeln!(
-            out,
-            "\nThe file was written, but the test request failed: {e}"
-        );
+    } else if let Err(e) = prove(&live, env, progress).await {
+        if is_stdout {
+            let _ = writeln!(progress, "\nThe test request failed: {e}");
+        } else {
+            let _ = writeln!(
+                progress,
+                "\nThe file was written, but the test request failed: {e}"
+            );
+        }
     }
-    snippets(&options.listen, &options.out, out);
+    if !is_stdout {
+        snippets(&options.listen, &options.out, progress);
+    }
     Ok(())
 }
 
