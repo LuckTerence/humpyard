@@ -66,7 +66,7 @@ humpyard completions fish > ~/.config/fish/completions/humpyard.fish
 humpyard completions elvish > ~/.config/elvish/lib/humpyard.elv
 ```
 
-For PowerShell:
+For PowerShell (run this once to append to your profile):
 
 ```powershell
 humpyard completions powershell >> $PROFILE

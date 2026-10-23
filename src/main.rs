@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -688,9 +689,7 @@ async fn main() -> ExitCode {
         .init();
     let command = Cli::parse().command;
     if let Command::Completions { shell } = command {
-        let mut cmd = Cli::command();
-        clap_complete::generate(shell, &mut cmd, "humpyard", &mut std::io::stdout());
-        return ExitCode::SUCCESS;
+        return write_completions(shell, &mut std::io::stdout().lock());
     }
     if let Command::Prices { command } = command {
         return prices_command(command).await;
@@ -902,5 +901,56 @@ async fn run(command: Command) -> Result<(), String> {
             let reload = reload_signals().map(|triggers| server::Reload { path, triggers });
             server::run(config, listener, termination_signals(), reload).await
         }
+    }
+}
+
+fn write_completions(shell: clap_complete::Shell, out: &mut dyn Write) -> ExitCode {
+    let mut cmd = Cli::command();
+    let mut buf = Vec::new();
+    clap_complete::generate(shell, &mut cmd, "humpyard", &mut buf);
+    match out.write_all(&buf).and_then(|()| out.flush()) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("failed to write completions: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+#[cfg(test)]
+mod completion_writer_tests {
+    use super::*;
+
+    struct BrokenPipeWriter;
+    impl Write for BrokenPipeWriter {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn broken_pipe_is_reported_as_success() {
+        let code = write_completions(clap_complete::Shell::Fish, &mut BrokenPipeWriter);
+        assert_eq!(code, ExitCode::SUCCESS);
+    }
+
+    #[test]
+    fn other_io_errors_are_reported_as_failure() {
+        struct FailingWriter;
+        impl Write for FailingWriter {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let code = write_completions(clap_complete::Shell::Fish, &mut FailingWriter);
+        assert_eq!(code, ExitCode::FAILURE);
     }
 }
