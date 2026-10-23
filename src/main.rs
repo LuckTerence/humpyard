@@ -51,7 +51,7 @@ enum Command {
         #[command(subcommand)]
         command: ModelsCommand,
     },
-    /// Print a shell completion script for bash, zsh, fish or powershell.
+    /// Print a shell completion script for bash, elvish, fish, powershell or zsh.
     Completions {
         /// The shell to generate completions for.
         shell: clap_complete::Shell,

@@ -48,7 +48,7 @@ install -m 755 humpyard-v0.12.0-aarch64-apple-darwin/humpyard ~/.local/bin/
 
 ## Shell completions
 
-Generate completions for your shell with `humpyard completions <shell>`:
+Generate completions for your shell (`bash`, `elvish`, `fish`, `powershell`, or `zsh`) with `humpyard completions <shell>`:
 
 ```sh
 # bash (requires bash-completion)
@@ -61,6 +61,15 @@ humpyard completions zsh > "${fpath[1]}/_humpyard"
 
 # fish
 humpyard completions fish > ~/.config/fish/completions/humpyard.fish
+
+# elvish (requires adding 'use humpyard' to ~/.config/elvish/rc.elv)
+humpyard completions elvish > ~/.config/elvish/lib/humpyard.elv
+```
+
+For PowerShell:
+
+```powershell
+humpyard completions powershell >> $PROFILE
 ```
 
 ## Container image

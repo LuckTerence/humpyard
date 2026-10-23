@@ -10,7 +10,7 @@ fn run_completions(shell: &str) -> std::process::Output {
 
 #[test]
 fn completions_generate_scripts_for_known_shells() {
-    for shell in ["bash", "zsh", "fish"] {
+    for shell in ["bash", "elvish", "fish", "powershell", "zsh"] {
         let out = run_completions(shell);
         assert!(out.status.success(), "shell {shell} failed: {out:?}");
         let text = String::from_utf8_lossy(&out.stdout);
